@@ -2,7 +2,7 @@ from PyQt5.QtWidgets import (QApplication, QGraphicsView, QGraphicsScene,
                              QGraphicsEllipseItem, QGraphicsRectItem, QMainWindow,
                              QGraphicsItem, QGraphicsLineItem, QPushButton, QVBoxLayout,
                              QWidget, QHBoxLayout, QInputDialog, QGraphicsTextItem, QMessageBox)
-from PyQt5.QtCore import Qt, QPointF
+from PyQt5.QtCore import Qt, QPointF, QRectF
 from PyQt5.QtGui import QPen, QBrush, QColor, QPainter, QFont
 import sys
 
@@ -23,24 +23,51 @@ class CircuitView(QGraphicsView):
             # Zoom out
             self.scale(1 / self.zoom_factor, 1 / self.zoom_factor)
 
-class ConnectionPin(QGraphicsEllipseItem):
+class ConnectionPin(QGraphicsItem):
     """Represents a connection point on a component"""
-    def __init__(self, x, y, parent=None):
-        super().__init__(-5, -5, 10, 10, parent)
+    def __init__(self, x, y, is_input, parent=None):
+        super().__init__(parent)
         self.setPos(x, y)
-        self.setBrush(QBrush(QColor(50, 150, 50)))
-        self.setPen(QPen(Qt.black, 2))
+        self.is_input = is_input
+        self.pin_size = 10
+        
+        # Set color based on pin type
+        if is_input:
+            self.normal_brush = QBrush(QColor(200, 50, 50))  # Red for input
+            self.hover_brush = QBrush(QColor(255, 100, 100))
+        else:
+            self.normal_brush = QBrush(QColor(50, 50, 200))  # Blue for output
+            self.hover_brush = QBrush(QColor(100, 100, 255))
+        
+        self.current_brush = self.normal_brush
+        self.pen = QPen(Qt.black, 2)
         self.setAcceptHoverEvents(True)
         self.wires = []
+    
+    def boundingRect(self):
+        return QRectF(-self.pin_size/2, -self.pin_size/2, self.pin_size, self.pin_size)
+    
+    def paint(self, painter, option, widget):
+        painter.setBrush(self.current_brush)
+        painter.setPen(self.pen)
+        
+        if self.is_input:
+            # Draw square for input
+            painter.drawRect(self.boundingRect())
+        else:
+            # Draw circle for output
+            painter.drawEllipse(self.boundingRect())
         
     def hoverEnterEvent(self, event):
-        self.setBrush(QBrush(QColor(100, 255, 100)))
+        self.current_brush = self.hover_brush
+        self.update()
         
     def hoverLeaveEvent(self, event):
-        self.setBrush(QBrush(QColor(50, 150, 50)))
+        self.current_brush = self.normal_brush
+        self.update()
         
     def scenePos(self):
-        return self.mapToScene(self.rect().center())
+        return self.mapToScene(self.boundingRect().center())
 
 class Wire(QGraphicsLineItem):
     """Represents a wire connection between two pins"""
@@ -132,10 +159,10 @@ class Component(QGraphicsRectItem):
         self.label.setPos((60 - text_width) / 2, 2)
         self.label.setTextInteractionFlags(Qt.NoTextInteraction)
         
-        # Input pin on the left
-        self.input_pin = ConnectionPin(0, 20, self)
-        # Output pin on the right
-        self.output_pin = ConnectionPin(60, 20, self)
+        # Input pin on the left (red)
+        self.input_pin = ConnectionPin(0, 20, is_input=True, parent=self)
+        # Output pin on the right (blue)
+        self.output_pin = ConnectionPin(60, 20, is_input=False, parent=self)
     
     def hoverEnterEvent(self, event):
         self.setBrush(self.hover_brush)
@@ -324,10 +351,21 @@ class CircuitScene(QGraphicsScene):
             event.accept()
         elif self.drawing_wire:
             item = self.itemAt(event.scenePos(), self.views()[0].transform())
+            
+            # Check if we're connecting to a valid pin
             if isinstance(item, ConnectionPin) and item != self.current_wire.start_pin:
-                self.current_wire.end_pin = item
-                item.wires.append(self.current_wire)
-                self.current_wire.updatePosition()
+                # Only allow output -> input connections
+                start_pin = self.current_wire.start_pin
+                end_pin = item
+                
+                # Check if connection is valid (output to input only)
+                if (not start_pin.is_input and end_pin.is_input) or (start_pin.is_input and not end_pin.is_input):
+                    self.current_wire.end_pin = item
+                    item.wires.append(self.current_wire)
+                    self.current_wire.updatePosition()
+                else:
+                    # Invalid connection
+                    self.removeItem(self.current_wire)
             else:
                 self.removeItem(self.current_wire)
             
