@@ -410,37 +410,32 @@ class CircuitDesigner(QMainWindow):
         
         self.setCentralWidget(main_widget)
         self.component_count = 0
+        self.component_name_counter = 1  # Counter for auto-generating unique names
         
     def startDraggingComponent(self):
         """Start dragging a new component from the toolbar"""
+        # Auto-generate unique name
+        name = self.generateUniqueName()
+        
+        self.scene.dragging_new_component = True
+        self.scene.new_component = Component(0, 0, name)
+        self.scene.addItem(self.scene.new_component)
+    
+    def generateUniqueName(self):
+        """Generate a unique component name"""
         while True:
-            # Ask for component name
-            name, ok = QInputDialog.getText(self, 'Component Name', 'Enter component name:')
-            if not ok:
-                # User cancelled
-                return
+            name = f"C{self.component_name_counter}"
+            self.component_name_counter += 1
             
-            # Check if name is empty
-            if not name.strip():
-                QMessageBox.warning(self, 'Invalid Name', 'Component name cannot be empty!')
-                continue
-            
-            # Check if name already exists
+            # Check if name exists
             name_exists = False
             for item in self.scene.items():
                 if isinstance(item, Component) and item.label.toPlainText() == name:
                     name_exists = True
                     break
             
-            if name_exists:
-                QMessageBox.warning(self, 'Duplicate Name', f'A component named "{name}" already exists!\nPlease choose a different name.')
-                continue
-            
-            # Name is valid, create component
-            self.scene.dragging_new_component = True
-            self.scene.new_component = Component(0, 0, name)
-            self.scene.addItem(self.scene.new_component)
-            break
+            if not name_exists:
+                return name
         
     def addComponent(self):
         x = 100 + (self.component_count % 5) * 100
