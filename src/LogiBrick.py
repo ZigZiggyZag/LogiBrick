@@ -1,9 +1,10 @@
 from PyQt5.QtWidgets import (QApplication, QGraphicsView, QGraphicsScene, 
                              QGraphicsEllipseItem, QGraphicsRectItem, QMainWindow,
                              QGraphicsItem, QGraphicsLineItem, QPushButton, QVBoxLayout,
-                             QWidget, QHBoxLayout, QInputDialog, QGraphicsTextItem, QMessageBox)
+                             QWidget, QHBoxLayout, QInputDialog, QGraphicsTextItem, QMessageBox,
+                             QGraphicsProxyWidget, QLineEdit)
 from PyQt5.QtCore import Qt, QPointF, QRectF
-from PyQt5.QtGui import QPen, QBrush, QColor, QPainter, QFont
+from PyQt5.QtGui import QPen, QBrush, QColor, QPainter, QFont, QDoubleValidator
 import sys
 
 class CircuitView(QGraphicsView):
@@ -134,10 +135,13 @@ class EditableLabel(QGraphicsTextItem):
             super().keyPressEvent(event)
 
 class Component(QGraphicsRectItem):
-    """Simple component with one input and one output"""
-    def __init__(self, x, y, name=""):
-        super().__init__(0, 0, 60, 40)
+    """Component with configurable number of inputs"""
+    def __init__(self, x, y, name="", num_inputs=1):
+        # Adjust height based on number of inputs
+        height = 40 + (num_inputs - 1) * 25
+        super().__init__(0, 0, 80, height)
         self.setPos(x, y)
+        self.num_inputs = num_inputs
         self.normal_brush = QBrush(QColor(100, 150, 255))
         self.hover_brush = QBrush(QColor(150, 200, 255))
         self.setBrush(self.normal_brush)
@@ -156,13 +160,29 @@ class Component(QGraphicsRectItem):
         self.label.setFont(font)
         # Center the text at the top
         text_width = self.label.boundingRect().width()
-        self.label.setPos((60 - text_width) / 2, 2)
+        self.label.setPos((80 - text_width) / 2, 2)
         self.label.setTextInteractionFlags(Qt.NoTextInteraction)
         
-        # Input pin on the left (red)
-        self.input_pin = ConnectionPin(0, 20, is_input=True, parent=self)
-        # Output pin on the right (blue)
-        self.output_pin = ConnectionPin(60, 20, is_input=False, parent=self)
+        # Create input text boxes
+        self.input_boxes = []
+        for i in range(num_inputs):
+            input_box = QLineEdit()
+            input_box.setValidator(QDoubleValidator())  # Only accept numbers
+            input_box.setMaximumWidth(60)
+            input_box.setAlignment(Qt.AlignCenter)
+            input_box.setStyleSheet("background-color: white; border: 1px solid black;")
+            
+            # Create proxy widget to embed QLineEdit in graphics scene
+            proxy = QGraphicsProxyWidget(self)
+            proxy.setWidget(input_box)
+            proxy.setPos(10, 20 + i * 25)
+            
+            self.input_boxes.append(input_box)
+        
+        # Input pin on the left
+        self.input_pin = ConnectionPin(0, height / 2, is_input=True, parent=self)
+        # Output pin on the right
+        self.output_pin = ConnectionPin(80, height / 2, is_input=False, parent=self)
     
     def hoverEnterEvent(self, event):
         self.setBrush(self.hover_brush)
@@ -359,12 +379,21 @@ class CircuitScene(QGraphicsScene):
                 end_pin = item
                 
                 # Check if connection is valid (output to input only)
-                if (not start_pin.is_input and end_pin.is_input) or (start_pin.is_input and not end_pin.is_input):
+                valid_direction = (not start_pin.is_input and end_pin.is_input) or (start_pin.is_input and not end_pin.is_input)
+                
+                # Check if this exact connection already exists
+                duplicate_connection = False
+                for wire in start_pin.wires:
+                    if wire.end_pin == end_pin or wire.start_pin == end_pin:
+                        duplicate_connection = True
+                        break
+                
+                if valid_direction and not duplicate_connection:
                     self.current_wire.end_pin = item
                     item.wires.append(self.current_wire)
                     self.current_wire.updatePosition()
                 else:
-                    # Invalid connection
+                    # Invalid connection or duplicate
                     self.removeItem(self.current_wire)
             else:
                 self.removeItem(self.current_wire)
@@ -390,13 +419,17 @@ class CircuitDesigner(QMainWindow):
         toolbar = QWidget()
         toolbar_layout = QHBoxLayout()
         
-        add_btn = QPushButton("Add Component")
-        add_btn.pressed.connect(self.startDraggingComponent)
+        add_btn1 = QPushButton("Add Component (1 input)")
+        add_btn1.pressed.connect(lambda: self.startDraggingComponent(1))
+        
+        add_btn2 = QPushButton("Add Component (2 inputs)")
+        add_btn2.pressed.connect(lambda: self.startDraggingComponent(2))
         
         clear_btn = QPushButton("Clear All")
         clear_btn.clicked.connect(self.clearAll)
         
-        toolbar_layout.addWidget(add_btn)
+        toolbar_layout.addWidget(add_btn1)
+        toolbar_layout.addWidget(add_btn2)
         toolbar_layout.addWidget(clear_btn)
         toolbar_layout.addStretch()
         toolbar.setLayout(toolbar_layout)
@@ -412,13 +445,13 @@ class CircuitDesigner(QMainWindow):
         self.component_count = 0
         self.component_name_counter = 1  # Counter for auto-generating unique names
         
-    def startDraggingComponent(self):
+    def startDraggingComponent(self, num_inputs=1):
         """Start dragging a new component from the toolbar"""
         # Auto-generate unique name
         name = self.generateUniqueName()
         
         self.scene.dragging_new_component = True
-        self.scene.new_component = Component(0, 0, name)
+        self.scene.new_component = Component(0, 0, name, num_inputs)
         self.scene.addItem(self.scene.new_component)
     
     def generateUniqueName(self):
@@ -437,10 +470,10 @@ class CircuitDesigner(QMainWindow):
             if not name_exists:
                 return name
         
-    def addComponent(self):
+    def addComponent(self, num_inputs=1):
         x = 100 + (self.component_count % 5) * 100
         y = 100 + (self.component_count // 5) * 100
-        component = Component(x, y, "")
+        component = Component(x, y, "", num_inputs)
         self.scene.addItem(component)
         self.component_count += 1
         
