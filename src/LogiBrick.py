@@ -138,7 +138,7 @@ class Component(QGraphicsRectItem):
     """Component with configurable number of inputs"""
     def __init__(self, x, y, name="", num_inputs=1):
         # Adjust height based on number of inputs
-        height = 40 + (num_inputs - 1) * 25
+        height = 50 + (num_inputs - 1) * 30
         super().__init__(0, 0, 80, height)
         self.setPos(x, y)
         self.num_inputs = num_inputs
@@ -175,12 +175,17 @@ class Component(QGraphicsRectItem):
             # Create proxy widget to embed QLineEdit in graphics scene
             proxy = QGraphicsProxyWidget(self)
             proxy.setWidget(input_box)
-            proxy.setPos(10, 20 + i * 25)
+            proxy.setPos(10, 22 + i * 30)
             
             self.input_boxes.append(input_box)
         
-        # Input pin on the left
-        self.input_pin = ConnectionPin(0, height / 2, is_input=True, parent=self)
+        # Create input pins on the left - one for each input
+        self.input_pins = []
+        for i in range(num_inputs):
+            pin_y = 22 + 10 + i * 30  # Align with text boxes
+            pin = ConnectionPin(0, pin_y, is_input=True, parent=self)
+            self.input_pins.append(pin)
+        
         # Output pin on the right
         self.output_pin = ConnectionPin(80, height / 2, is_input=False, parent=self)
     
@@ -272,17 +277,24 @@ class Component(QGraphicsRectItem):
         
     def itemChange(self, change, value):
         if change == QGraphicsItem.ItemPositionHasChanged:
-            for wire in self.input_pin.wires + self.output_pin.wires:
+            # Update all input pins
+            for pin in self.input_pins:
+                for wire in pin.wires:
+                    wire.updatePosition()
+            # Update output pin
+            for wire in self.output_pin.wires:
                 wire.updatePosition()
         return super().itemChange(change, value)
     
     def removeFromScene(self):
         """Remove this component and all connected wires"""
-        # Remove all connected wires
-        for wire in self.input_pin.wires[:]:
-            wire.removeFromPins()
-            if wire.scene():
-                wire.scene().removeItem(wire)
+        # Remove all connected wires from input pins
+        for pin in self.input_pins:
+            for wire in pin.wires[:]:
+                wire.removeFromPins()
+                if wire.scene():
+                    wire.scene().removeItem(wire)
+        # Remove all connected wires from output pin
         for wire in self.output_pin.wires[:]:
             wire.removeFromPins()
             if wire.scene():
