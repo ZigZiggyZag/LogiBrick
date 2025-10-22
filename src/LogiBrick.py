@@ -27,11 +27,12 @@ class CircuitView(QGraphicsView):
 
 class ConnectionPin(QGraphicsItem):
     """Represents a connection point on a component"""
-    def __init__(self, x, y, is_input, parent=None):
+    def __init__(self, x, y, is_input, parent=None, input_box_index=None):
         super().__init__(parent)
         self.setPos(x, y)
         self.is_input = is_input
         self.pin_size = 10
+        self.input_box_index = input_box_index  # Index of corresponding input box
         
         # Set color based on pin type
         if is_input:
@@ -70,6 +71,35 @@ class ConnectionPin(QGraphicsItem):
         
     def scenePos(self):
         return self.mapToScene(self.boundingRect().center())
+    
+    def updateInputBoxState(self):
+        """Update the corresponding input box enabled state"""
+        if self.is_input and self.input_box_index is not None and self.parentItem():
+            component = self.parentItem()
+            if self.input_box_index < len(component.input_boxes):
+                input_box = component.input_boxes[self.input_box_index]
+                if len(self.wires) > 0:
+                    # Disable and grey out if connected
+                    input_box.setEnabled(False)
+                    input_box.setStyleSheet("background-color: #cccccc; border: 1px solid black;")
+                    
+                    # Display all connected component names
+                    component_names = []
+                    for wire in self.wires:
+                        source_pin = wire.start_pin if wire.start_pin != self else wire.end_pin
+                        if source_pin and source_pin.parentItem():
+                            source_component = source_pin.parentItem()
+                            if hasattr(source_component, 'label'):
+                                component_names.append(source_component.label.toPlainText())
+                    
+                    # Join with " + " separator
+                    if component_names:
+                        input_box.setText(" + ".join(component_names))
+                else:
+                    # Enable if not connected
+                    input_box.setEnabled(True)
+                    input_box.setStyleSheet("background-color: white; border: 1px solid black;")
+                    input_box.setText("")  # Clear the text when disconnected
 
 class Wire(QGraphicsItem):
     """Represents a wire connection between two pins with curved path"""
@@ -159,8 +189,12 @@ class Wire(QGraphicsItem):
         """Remove this wire from its connected pins"""
         if self.start_pin and self in self.start_pin.wires:
             self.start_pin.wires.remove(self)
+            if self.start_pin.is_input:
+                self.start_pin.updateInputBoxState()
         if self.end_pin and self in self.end_pin.wires:
             self.end_pin.wires.remove(self)
+            if self.end_pin.is_input:
+                self.end_pin.updateInputBoxState()
 
 class EditableLabel(QGraphicsTextItem):
     """Custom text item that handles Enter key"""
@@ -224,7 +258,7 @@ class Component(QGraphicsRectItem):
         self.input_pins = []
         for i in range(num_inputs):
             pin_y = 22 + 10 + i * 30  # Align with text boxes
-            pin = ConnectionPin(0, pin_y, is_input=True, parent=self)
+            pin = ConnectionPin(0, pin_y, is_input=True, parent=self, input_box_index=i)
             self.input_pins.append(pin)
         
         # Output pin on the right
@@ -445,6 +479,9 @@ class CircuitScene(QGraphicsScene):
                     self.current_wire.end_pin = item
                     item.wires.append(self.current_wire)
                     self.current_wire.updatePosition()
+                    # Update input box state if it's an input pin
+                    if item.is_input:
+                        item.updateInputBoxState()
                 else:
                     # Invalid connection or duplicate
                     self.removeItem(self.current_wire)
