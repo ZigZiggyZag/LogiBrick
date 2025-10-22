@@ -240,6 +240,7 @@ class Component(QGraphicsRectItem):
         
         # Create input text boxes
         self.input_boxes = []
+        self.input_proxies = []
         for i in range(num_inputs):
             input_box = QLineEdit()
             input_box.setValidator(QDoubleValidator())  # Only accept numbers
@@ -251,8 +252,12 @@ class Component(QGraphicsRectItem):
             proxy = QGraphicsProxyWidget(self)
             proxy.setWidget(input_box)
             proxy.setPos(10, 22 + i * 30)
+            proxy.setAcceptHoverEvents(False)
             
             self.input_boxes.append(input_box)
+            self.input_proxies.append(proxy)
+        
+        self.currently_highlighted_components = []
         
         # Create input pins on the left - one for each input
         self.input_pins = []
@@ -265,10 +270,81 @@ class Component(QGraphicsRectItem):
         self.output_pin = ConnectionPin(80, height / 2, is_input=False, parent=self)
     
     def hoverEnterEvent(self, event):
-        self.setBrush(self.hover_brush)
+        # Check on enter and update accordingly
+        if self.isOverTextBox(event.pos()):
+            self.setBrush(self.normal_brush)
+        else:
+            self.setBrush(self.hover_brush)
+        super().hoverEnterEvent(event)
         
     def hoverLeaveEvent(self, event):
         self.setBrush(self.normal_brush)
+        self.clearHighlightedComponents()
+        super().hoverLeaveEvent(event)
+    
+    def hoverMoveEvent(self, event):
+        if self.isOverTextBox(event.pos()):
+            self.setBrush(self.normal_brush)
+            # Check which text box we're over and highlight connected components
+            self.highlightConnectedComponents(event.pos())
+        else:
+            self.setBrush(self.hover_brush)
+            self.clearHighlightedComponents()
+        super().hoverMoveEvent(event)
+    
+    def isOverTextBox(self, pos):
+        """Check if position is over any text box"""
+        for proxy in self.input_proxies:
+            # Get the proxy's geometry in component coordinates
+            proxy_pos = proxy.pos()
+            proxy_rect = proxy.boundingRect()
+            
+            # Create rect in component's coordinate system
+            absolute_rect = QRectF(
+                proxy_pos.x() + proxy_rect.x(),
+                proxy_pos.y() + proxy_rect.y(),
+                proxy_rect.width(),
+                proxy_rect.height()
+            )
+            
+            if absolute_rect.contains(pos):
+                return True
+        return False
+    
+    def highlightConnectedComponents(self, pos):
+        """Highlight components connected to the text box under the mouse"""
+        # Clear previous highlights
+        self.clearHighlightedComponents()
+        
+        # Find which text box we're over
+        for i, proxy in enumerate(self.input_proxies):
+            proxy_pos = proxy.pos()
+            proxy_rect = proxy.boundingRect()
+            absolute_rect = QRectF(
+                proxy_pos.x() + proxy_rect.x(),
+                proxy_pos.y() + proxy_rect.y(),
+                proxy_rect.width(),
+                proxy_rect.height()
+            )
+            
+            if absolute_rect.contains(pos):
+                # Found the text box, now highlight connected components
+                if i < len(self.input_pins):
+                    pin = self.input_pins[i]
+                    for wire in pin.wires:
+                        source_pin = wire.start_pin if wire.start_pin != pin else wire.end_pin
+                        if source_pin and source_pin.parentItem():
+                            source_component = source_pin.parentItem()
+                            if isinstance(source_component, Component):
+                                source_component.setBrush(source_component.hover_brush)
+                                self.currently_highlighted_components.append(source_component)
+                break
+    
+    def clearHighlightedComponents(self):
+        """Clear all highlighted components"""
+        for comp in self.currently_highlighted_components:
+            comp.setBrush(comp.normal_brush)
+        self.currently_highlighted_components.clear()
     
     def mouseDoubleClickEvent(self, event):
         """Double-click to enable editing"""
