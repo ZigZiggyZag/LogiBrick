@@ -4,7 +4,8 @@ from PyQt5.QtWidgets import (QApplication, QGraphicsView, QGraphicsScene,
                              QWidget, QHBoxLayout, QInputDialog, QGraphicsTextItem, QMessageBox,
                              QGraphicsProxyWidget, QLineEdit)
 from PyQt5.QtCore import Qt, QPointF, QRectF
-from PyQt5.QtGui import QPen, QBrush, QColor, QPainter, QFont, QDoubleValidator
+from PyQt5.QtGui import (QPen, QBrush, QColor, QPainter, QFont, QDoubleValidator, 
+                         QPainterPath, QPainterPathStroker)
 import sys
 
 class CircuitView(QGraphicsView):
@@ -70,15 +71,15 @@ class ConnectionPin(QGraphicsItem):
     def scenePos(self):
         return self.mapToScene(self.boundingRect().center())
 
-class Wire(QGraphicsLineItem):
-    """Represents a wire connection between two pins"""
+class Wire(QGraphicsItem):
+    """Represents a wire connection between two pins with curved path"""
     def __init__(self, start_pin, end_pin=None, start_pos=None):
         super().__init__()
         self.start_pin = start_pin
         self.end_pin = end_pin
         self.normal_pen = QPen(QColor(200, 50, 50), 3)
         self.hover_pen = QPen(QColor(255, 100, 100), 5)
-        self.setPen(self.normal_pen)
+        self.current_pen = self.normal_pen
         self.setZValue(-1)
         self.setAcceptHoverEvents(True)
         
@@ -87,32 +88,72 @@ class Wire(QGraphicsLineItem):
         if end_pin:
             end_pin.wires.append(self)
         
-        # Initialize with start position if provided
+        # Initialize path
+        self.path = QPainterPath()
         if start_pos and start_pin:
             start = start_pin.scenePos()
-            self.setLine(start.x(), start.y(), start_pos.x(), start_pos.y())
+            self.updatePath(start, start_pos)
         else:
             self.updatePosition()
     
+    def boundingRect(self):
+        # Add some padding for the pen width
+        return self.path.boundingRect().adjusted(-5, -5, 5, 5)
+    
+    def shape(self):
+        # Create a wider shape for easier mouse interaction
+        stroker = QPainterPathStroker()
+        stroker.setWidth(10)
+        return stroker.createStroke(self.path)
+    
+    def paint(self, painter, option, widget):
+        painter.setPen(self.current_pen)
+        painter.drawPath(self.path)
+    
     def hoverEnterEvent(self, event):
-        self.setPen(self.hover_pen)
+        self.current_pen = self.hover_pen
+        self.update()
         
     def hoverLeaveEvent(self, event):
-        self.setPen(self.normal_pen)
+        self.current_pen = self.normal_pen
+        self.update()
+        
+    def updatePath(self, start, end):
+        """Create a curved S-shaped path from start to end"""
+        self.path = QPainterPath()
+        self.path.moveTo(start)
+        
+        # Calculate control points for bezier curve
+        dx = end.x() - start.x()
+        
+        # Control points create an S-curve
+        # The amount of horizontal offset determines the curve intensity
+        offset = abs(dx) * 0.5
+        
+        ctrl1 = QPointF(start.x() + offset, start.y())
+        ctrl2 = QPointF(end.x() - offset, end.y())
+        
+        # Draw cubic bezier curve
+        self.path.cubicTo(ctrl1, ctrl2, end)
+        
+        self.prepareGeometryChange()
         
     def updatePosition(self):
+        """Update wire position based on pin positions"""
         if self.start_pin:
             start = self.start_pin.scenePos()
             if self.end_pin:
                 end = self.end_pin.scenePos()
             else:
-                end = self.line().p2()
-            self.setLine(start.x(), start.y(), end.x(), end.y())
+                # If no end pin, keep current endpoint
+                end = self.path.currentPosition()
+            self.updatePath(start, end)
             
     def setEndPoint(self, point):
+        """Set temporary endpoint while dragging"""
         if self.start_pin:
             start = self.start_pin.scenePos()
-            self.setLine(start.x(), start.y(), point.x(), point.y())
+            self.updatePath(start, point)
     
     def removeFromPins(self):
         """Remove this wire from its connected pins"""
