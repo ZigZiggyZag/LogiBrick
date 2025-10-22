@@ -269,13 +269,13 @@ class Component(QGraphicsRectItem):
         # Output pin on the right
         self.output_pin = ConnectionPin(80, height / 2, is_input=False, parent=self)
     
-    def hoverEnterEvent(self, event):
-        # Check on enter and update accordingly
-        if self.isOverTextBox(event.pos()):
-            self.setBrush(self.normal_brush)
-        else:
-            self.setBrush(self.hover_brush)
-        super().hoverEnterEvent(event)
+    # def hoverEnterEvent(self, event):
+    #     # Check on enter and update accordingly
+    #     if self.isOverTextBox(event.pos()):
+    #         self.setBrush(self.normal_brush)
+    #     else:
+    #         self.setBrush(self.hover_brush)
+    #     super().hoverEnterEvent(event)
         
     def hoverLeaveEvent(self, event):
         self.setBrush(self.normal_brush)
