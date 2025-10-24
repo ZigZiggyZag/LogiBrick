@@ -212,7 +212,7 @@ def generateCreation(name: str, equation: str):
                 generateMathBrick(creation, token, "Add", "None", 0, x = xLocation, y = 10)
                 generateTextBrick(creation, token + "text", token, x = xLocation, y = 20, z = 5, zrot = -90)
                 xLocation += 10
-        elif ((token in functionNames) and (token != "MIN" and token != "MAX" and token != "ABS")):
+        elif ((token in functionNames) and (token != "MIN" and token != "MAX")):
             brOpName = opToBROp[token]
             tokenName = brOpName + str(nameIterator)
             nameIterator += 1
