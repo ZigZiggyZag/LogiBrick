@@ -53,8 +53,10 @@ class ComponentPin(QGraphicsItem):
 
 class Component(QGraphicsRectItem):
     def __init__(self, x, y, name, function):
+        numInputs = (2 if (function in constants.functionsWithTwoInputs) else 1)
+
         self.width = 90
-        self.height = 50
+        self.height = 55 + (numInputs - 1) * 30
         super().__init__(0, 0, self.width, self.height)
         self.setPos(x, y)
         
@@ -86,6 +88,23 @@ class Component(QGraphicsRectItem):
 
         # Pins
         self.outpuPin = ComponentPin(self.width, self.height/2, False, self)
+
+        # Input Boxes
+        self.inputBoxes = []
+
+        for i in range(numInputs):
+            inputBox = QLineEdit()
+            inputBox.setValidator(QDoubleValidator())
+            inputBox.setMaximumWidth(self.width - 20)
+            inputBox.setAlignment(Qt.AlignCenter)
+            inputBox.setStyleSheet("background-color: white; border: 1px solid black;")
+            inputBoxFont = QFont()
+            inputBoxFont.setBold(True)
+            inputBox.setFont(inputBoxFont)
+            
+            proxy = QGraphicsProxyWidget(self)
+            proxy.setWidget(inputBox)
+            proxy.setPos(10, 25 + (i * 30))
     
     def hoverMoveEvent(self, event):
         self.setBrush(self.hoverBrush)
