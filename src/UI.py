@@ -4,9 +4,56 @@ from PyQt5.QtGui import *
 import constants
 import sys
 
+class ComponentPin(QGraphicsItem):
+    def __init__(self, x, y, isInput, parent=None, pinIndex=None):
+        super().__init__(parent)
+        self.setPos(x, y)
+        self.isInput = isInput
+        self.pinSize = 15
+        self.pinIndex = pinIndex
+
+        # Set color based on pin type
+        if isInput:
+            self.normalBrush = QBrush(QColor(200, 50, 50))  # Red for input
+            self.hoverBrush = QBrush(QColor(255, 100, 100))
+        else:
+            self.normalBrush = QBrush(QColor(50, 50, 200))  # Blue for output
+            self.hoverBrush = QBrush(QColor(100, 100, 255))
+        
+        self.currentBrush = self.normalBrush
+        self.pen = QPen(Qt.black, 2)
+        self.setAcceptHoverEvents(True)
+
+        # list of connected wires
+        self.wires = []
+
+    def boundingRect(self):
+        return QRectF(-self.pinSize/2, -self.pinSize/2, self.pinSize, self.pinSize)
+    
+    def paint(self, painter, option, widget):
+        painter.setBrush(self.currentBrush)
+        painter.setPen(self.pen)
+
+        if self.isInput:
+            painter.drawRect(self.boundingRect())
+        else:
+            painter.drawEllipse(self.boundingRect())
+    
+    def hoverEnterEvent(self, event):
+        self.currentBrush = self.hoverBrush
+        self.update()
+        
+    def hoverLeaveEvent(self, event):
+        self.currentBrush = self.normalBrush
+        self.update()
+        
+    def scenePos(self):
+        return self.mapToScene(self.boundingRect().center())
+
+
 class Component(QGraphicsRectItem):
     def __init__(self, x, y, name, function):
-        self.width = 80
+        self.width = 90
         self.height = 50
         super().__init__(0, 0, self.width, self.height)
         self.setPos(x, y)
@@ -26,9 +73,9 @@ class Component(QGraphicsRectItem):
         label.setTextInteractionFlags(Qt.NoTextInteraction)
 
         # Colors
-        self.normal_brush = QBrush(QColor(100, 150, 255))
-
-        self.setBrush(self.normal_brush)
+        self.normalBrush = QBrush(QColor(100, 150, 255))
+        self.hoverBrush = QBrush(QColor(150, 200, 255))
+        self.setBrush(self.normalBrush)
         self.setPen(QPen(Qt.black, 2))
 
         # Flags
@@ -36,6 +83,17 @@ class Component(QGraphicsRectItem):
         self.setFlag(QGraphicsItem.ItemIsSelectable)
         self.setFlag(QGraphicsItem.ItemSendsGeometryChanges)
         self.setAcceptHoverEvents(True)
+
+        # Pins
+        self.outpuPin = ComponentPin(self.width, self.height/2, False, self)
+    
+    def hoverMoveEvent(self, event):
+        self.setBrush(self.hoverBrush)
+        super().hoverMoveEvent(event)
+    
+    def hoverLeaveEvent(self, event):
+        self.setBrush(self.normalBrush)
+        super().hoverLeaveEvent(event)
 
 class CircuitDesignerView(QGraphicsView):
     def __init__(self, scene):
@@ -69,7 +127,7 @@ class CircuitDesignerScene(QGraphicsScene):
     def setMainView(self):
         self.mainView = self.views()[0]
 
-    def addComponent(self, component: QGraphicsItem):
+    def addComponent(self, component: Component):
         self.heldComponent = component
         self.addItem(component)
 
@@ -88,7 +146,7 @@ class CircuitDesignerScene(QGraphicsScene):
     
     def mouseMoveEvent(self, event):
         if self.heldComponent:
-            self.heldComponent.setPos(event.scenePos().x() - 30, event.scenePos().y() - 20)
+            self.heldComponent.setPos(event.scenePos().x() - (self.heldComponent.width / 2), event.scenePos().y() - (self.heldComponent.height / 2))
         elif self.panning and self.lastPanPos:
             delta = event.screenPos() - self.lastPanPos
             self.lastPanPos = event.screenPos()
