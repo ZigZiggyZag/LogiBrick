@@ -356,8 +356,10 @@ class CircuitDesignerScene(QGraphicsScene):
                             if wire.endPin == currentEndPin or wire.startPin == currentEndPin:
                                 uniqueConnection = False
                                 break
+                        # Make sure the clicked pin is not attached to the same component
+                        notSameParent = (currentStartPin.parent != currentEndPin.parent)
 
-                        if notStartPin and validConnection and uniqueConnection:
+                        if notStartPin and validConnection and uniqueConnection and notSameParent:
                             self.heldWire.endPin = currentEndPin
                             currentEndPin.addWire(self.heldWire)
                             self.heldWire.updatePosition()
@@ -388,6 +390,7 @@ class CircuitDesignerScene(QGraphicsScene):
             self.mainView.verticalScrollBar().setValue(self.mainView.verticalScrollBar().value() - delta.y())
         elif self.drawingWire and self.heldWire:
             self.heldWire.setEndPoint(event.scenePos())
+            super().mouseMoveEvent(event)
         else:
             super().mouseMoveEvent(event)
 
