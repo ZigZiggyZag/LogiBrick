@@ -64,7 +64,7 @@ class ComponentPin(QGraphicsItem):
     def clearAllWires(self):
         wire: Wire
         for wire in self.wires[:]:
-            wire.removeFromPins(self)
+            wire.removeFromPins()
             if wire.scene():
                 wire.scene().removeItem(wire)
 
@@ -199,7 +199,7 @@ class Component(QGraphicsRectItem):
         self.uniqueName = name
 
         # Component Label
-        label = QGraphicsTextItem(function, self)
+        label = QGraphicsTextItem(self.uniqueName, self)
         label.setDefaultTextColor(Qt.white)
         font = QFont()
         font.setPointSize(8)
@@ -277,6 +277,9 @@ class Component(QGraphicsRectItem):
             for wire in self.outpuPin.wires:
                 wire.updatePosition()
         return super().itemChange(change, value)
+    
+    def disableInputBox(self, inputBoxIndex):
+        print("TODO")
     
     def removeFromScene(self):
         pin: ComponentPin
