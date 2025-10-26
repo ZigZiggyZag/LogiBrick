@@ -7,6 +7,7 @@ import sys
 class ComponentPin(QGraphicsItem):
     def __init__(self, x, y, isInput, parent=None, pinIndex=None):
         super().__init__(parent)
+        self.parent = parent
         self.setPos(x, y)
         self.isInput = isInput
         self.pinSize = 15
@@ -27,6 +28,12 @@ class ComponentPin(QGraphicsItem):
         # list of connected wires
         self.wires = []
 
+    def addWire(self, wire):
+        self.wires.append(wire)
+    
+    def removeWire(self, wire):
+        self.wires.remove(wire)
+
     def boundingRect(self):
         return QRectF(-self.pinSize/2, -self.pinSize/2, self.pinSize, self.pinSize)
     
@@ -41,21 +48,138 @@ class ComponentPin(QGraphicsItem):
     
     def hoverEnterEvent(self, event):
         self.currentBrush = self.hoverBrush
+        if (hasattr(self.parent, 'setHighlight')):
+            self.parent.setHighlight(0)
         self.update()
         
     def hoverLeaveEvent(self, event):
         self.currentBrush = self.normalBrush
+        if (hasattr(self.parent, 'setHighlight')):
+            self.parent.setHighlight(1)
         self.update()
         
     def scenePos(self):
         return self.mapToScene(self.boundingRect().center())
 
+class Wire(QGraphicsItem):
+    def __init__(self, startPin: ComponentPin, endPin: ComponentPin=None, startPos=None):
+        super().__init__()
+        self.startPin = startPin
+        self.endPin = endPin
+
+        self.normalPen = QPen(QColor(200, 50, 50), 3)
+        self.hoverPen = QPen(QColor(255, 100, 100), 5)
+        self.currentPen = self.normalPen
+
+        self.setZValue(-1)
+        self.setAcceptHoverEvents(True)
+
+        if startPin:
+            startPin.addWire(self)
+        if endPin:
+            endPin.addWire(self)
+        
+        self.path = QPainterPath()
+        if startPos and startPin:
+            start = startPin.scenePos()
+            if (startPin.isInput):
+                self.updatePath(startPos, start)
+            else:
+                self.updatePath(start, startPos)
+        else:
+            self.updatePosition()
+
+    def boundingRect(self):
+        # Add some padding for the pen width
+        return self.path.boundingRect().adjusted(-5, -5, 5, 5)
+    
+    def shape(self):
+        # Create a wider shape for easier mouse interaction
+        stroker = QPainterPathStroker()
+        stroker.setWidth(10)
+        return stroker.createStroke(self.path)
+    
+    def setHighlight(self, highlight):
+        match highlight:
+            case 0: self.currentPen = self.normalPen
+            case 1: self.currentPen = self.hoverPen
+
+    def paint(self, painter, option, widget):
+        painter.setPen(self.currentPen)
+        painter.drawPath(self.path)
+    
+    def hoverEnterEvent(self, event):
+        self.setHighlight(1)
+        super().hoverEnterEvent(event)
+
+    def hoverLeaveEvent(self, event):
+        self.setHighlight(0)
+        super().hoverLeaveEvent(event)
+
+    def updatePath(self, start, end):
+        """Create a curved S-shaped path from start to end"""
+        self.path = QPainterPath()
+        self.path.moveTo(start)
+        
+        # Calculate control points for bezier curve
+        dx = end.x() - start.x()
+        
+        # Control points create an S-curve
+        # The amount of horizontal offset determines the curve intensity
+        offset = abs(dx) * 0.5
+        
+        ctrl1 = QPointF(start.x() + offset, start.y())
+        ctrl2 = QPointF(end.x() - offset, end.y())
+        
+        # Draw cubic bezier curve
+        self.path.cubicTo(ctrl1, ctrl2, end)
+        
+        self.prepareGeometryChange()
+
+    def updatePosition(self):
+        """Update wire position based on pin positions"""
+        if self.startPin:
+            start = self.startPin.scenePos()
+            if self.endPin:
+                end = self.endPin.scenePos()
+            else:
+                # If no end pin, keep current endpoint
+                end = self.path.currentPosition()
+            if (self.startPin.isInput):
+                self.updatePath(end, start)
+            else:
+                self.updatePath(start, end)
+            
+    def setEndPoint(self, point):
+        """Set temporary endpoint while dragging"""
+        if self.startPin:
+            start = self.startPin.scenePos()
+            if (self.startPin.isInput):
+                self.updatePath(point, start)
+            else:
+                self.updatePath(start, point)
+
+class customProxyExtension(QGraphicsProxyWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.parent = parent
+        self.setAcceptHoverEvents(True)
+
+    def hoverEnterEvent(self, event):
+        if (hasattr(self.parent, 'setHighlight')):
+            self.parent.setHighlight(0)
+        super().hoverEnterEvent(event)
+        
+    def hoverLeaveEvent(self, event):
+        if (hasattr(self.parent, 'setHighlight')):
+            self.parent.setHighlight(1)
+        super().hoverLeaveEvent(event)
 
 class Component(QGraphicsRectItem):
     def __init__(self, x, y, name, function):
         numInputs = (2 if (function in constants.functionsWithTwoInputs) else 1)
 
-        self.width = 90
+        self.width = 100
         self.height = 55 + (numInputs - 1) * 30
         super().__init__(0, 0, self.width, self.height)
         self.setPos(x, y)
@@ -86,33 +210,62 @@ class Component(QGraphicsRectItem):
         self.setFlag(QGraphicsItem.ItemSendsGeometryChanges)
         self.setAcceptHoverEvents(True)
 
-        # Pins
-        self.outpuPin = ComponentPin(self.width, self.height/2, False, self)
-
         # Input Boxes
         self.inputBoxes = []
+        self.inputBoxProxies = []
 
         for i in range(numInputs):
             inputBox = QLineEdit()
             inputBox.setValidator(QDoubleValidator())
-            inputBox.setMaximumWidth(self.width - 20)
+            inputBox.setMaximumWidth(self.width - 25)
             inputBox.setAlignment(Qt.AlignCenter)
             inputBox.setStyleSheet("background-color: white; border: 1px solid black;")
             inputBoxFont = QFont()
             inputBoxFont.setBold(True)
             inputBox.setFont(inputBoxFont)
             
-            proxy = QGraphicsProxyWidget(self)
+            proxy = customProxyExtension(self)
             proxy.setWidget(inputBox)
             proxy.setPos(10, 25 + (i * 30))
+
+            self.inputBoxes.append(inputBox)
+            self.inputBoxProxies.append(proxy)
+
+        # Pins
+        self.outpuPin = ComponentPin(self.width, self.height/2, False, self)
+        
+        self.inputPins = []
+
+        for i in range(numInputs):
+            pinYPos = (34 + (i * 30))
+            pin = ComponentPin(0, pinYPos, True, self, i)
+            self.inputPins.append(pin)
+
+    def setHighlight(self, highlight):
+        match highlight:
+            case 0: self.setBrush(self.normalBrush)
+            case 1: self.setBrush(self.hoverBrush)
+
+    def hoverEnterEvent(self, event):
+        self.setHighlight(1)
+        super().hoverEnterEvent(event)
     
     def hoverMoveEvent(self, event):
-        self.setBrush(self.hoverBrush)
         super().hoverMoveEvent(event)
     
     def hoverLeaveEvent(self, event):
-        self.setBrush(self.normalBrush)
+        self.setHighlight(0)
         super().hoverLeaveEvent(event)
+
+    def itemChange(self, change, value):
+        if change == QGraphicsItem.ItemPositionHasChanged:
+            for pin in self.inputPins:
+                for wire in pin.wires:
+                    wire.updatePosition()
+            for wire in self.outpuPin.wires:
+                wire.updatePosition()
+        return super().itemChange(change, value)
+
 
 class CircuitDesignerView(QGraphicsView):
     def __init__(self, scene):
@@ -143,6 +296,10 @@ class CircuitDesignerScene(QGraphicsScene):
         # Component variables
         self.heldComponent = None
 
+        # Wire variables
+        self.heldWire = None
+        self.drawingWire = False
+
     def setMainView(self):
         self.mainView = self.views()[0]
 
@@ -151,6 +308,8 @@ class CircuitDesignerScene(QGraphicsScene):
         self.addItem(component)
 
     def mousePressEvent(self, event):
+        item = self.itemAt(event.scenePos(), self.views()[0].transform())
+
         match event.button():
             case Qt.MiddleButton:
                 self.panning = True
@@ -158,8 +317,47 @@ class CircuitDesignerScene(QGraphicsScene):
                 event.accept()
             case Qt.RightButton:
                 print("TODO")
+                event.accept()
             case Qt.LeftButton:
-                super().mousePressEvent(event)
+                if (isinstance(item, ComponentPin)):
+                    if (not self.drawingWire):
+                        print("start wire")
+                        self.drawingWire = True
+                        self.heldWire = Wire(startPin=item, startPos=event.scenePos())
+                        self.addItem(self.heldWire)
+                        event.accept()
+                    else:
+                        print("end wire")
+                        currentStartPin = self.heldWire.startPin
+                        currentEndPin = item
+
+                        # Check if the pin clicked on is not the same pin we started on
+                        notStartPin = (currentEndPin != currentStartPin)
+                        # Make sure only one of the pins is an input pin
+                        validConnection = (currentStartPin.isInput != currentEndPin.isInput)
+                        # Make sure the connection is unique
+                        uniqueConnection = True
+                        for wire in currentStartPin.wires:
+                            if wire.endPin == currentEndPin or wire.startPin == currentEndPin:
+                                uniqueConnection = False
+                                break
+
+                        if notStartPin and validConnection and uniqueConnection:
+                            self.heldWire.endPin = currentEndPin
+                            currentEndPin.addWire(self.heldWire)
+                            self.heldWire.updatePosition()
+                        else:
+                            self.removeItem(self.heldWire)
+                        self.drawingWire = False
+                        self.heldWire = None
+                        event.accept()   
+                elif self.heldWire:
+                    self.removeItem(self.heldWire)
+                    self.drawingWire = False
+                    self.heldWire = None
+                    event.accept()  
+                else:
+                    super().mousePressEvent(event)
             case _:
                 event.accept()
     
@@ -171,6 +369,8 @@ class CircuitDesignerScene(QGraphicsScene):
             self.lastPanPos = event.screenPos()
             self.mainView.horizontalScrollBar().setValue(self.mainView.horizontalScrollBar().value() - delta.x())
             self.mainView.verticalScrollBar().setValue(self.mainView.verticalScrollBar().value() - delta.y())
+        elif self.drawingWire and self.heldWire:
+            self.heldWire.setEndPoint(event.scenePos())
         else:
             super().mouseMoveEvent(event)
 
