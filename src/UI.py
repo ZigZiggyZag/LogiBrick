@@ -60,6 +60,13 @@ class ComponentPin(QGraphicsItem):
         
     def scenePos(self):
         return self.mapToScene(self.boundingRect().center())
+    
+    def clearAllWires(self):
+        wire: Wire
+        for wire in self.wires[:]:
+            wire.removeFromPins(self)
+            if wire.scene():
+                wire.scene().removeItem(wire)
 
 class Wire(QGraphicsItem):
     def __init__(self, startPin: ComponentPin, endPin: ComponentPin=None, startPos=None):
@@ -82,10 +89,7 @@ class Wire(QGraphicsItem):
         self.path = QPainterPath()
         if startPos and startPin:
             start = startPin.scenePos()
-            if (startPin.isInput):
-                self.updatePath(startPos, start)
-            else:
-                self.updatePath(start, startPos)
+            self.updatePath(start, startPos)
         else:
             self.updatePosition()
 
@@ -118,21 +122,29 @@ class Wire(QGraphicsItem):
 
     def updatePath(self, start, end):
         """Create a curved S-shaped path from start to end"""
+        
+        if (self.startPin.isInput):
+            newStart = end
+            newEnd = start
+        else:
+            newStart = start
+            newEnd = end
+
         self.path = QPainterPath()
-        self.path.moveTo(start)
+        self.path.moveTo(newStart)
         
         # Calculate control points for bezier curve
-        dx = end.x() - start.x()
+        dx = newEnd.x() - newStart.x()
         
         # Control points create an S-curve
         # The amount of horizontal offset determines the curve intensity
         offset = abs(dx) * 0.5
         
-        ctrl1 = QPointF(start.x() + offset, start.y())
-        ctrl2 = QPointF(end.x() - offset, end.y())
+        ctrl1 = QPointF(newStart.x() + offset, newStart.y())
+        ctrl2 = QPointF(newEnd.x() - offset, newEnd.y())
         
         # Draw cubic bezier curve
-        self.path.cubicTo(ctrl1, ctrl2, end)
+        self.path.cubicTo(ctrl1, ctrl2, newEnd)
         
         self.prepareGeometryChange()
 
@@ -145,19 +157,19 @@ class Wire(QGraphicsItem):
             else:
                 # If no end pin, keep current endpoint
                 end = self.path.currentPosition()
-            if (self.startPin.isInput):
-                self.updatePath(end, start)
-            else:
-                self.updatePath(start, end)
+            self.updatePath(start, end)
             
     def setEndPoint(self, point):
         """Set temporary endpoint while dragging"""
         if self.startPin:
             start = self.startPin.scenePos()
-            if (self.startPin.isInput):
-                self.updatePath(point, start)
-            else:
-                self.updatePath(start, point)
+            self.updatePath(start, point)
+
+    def removeFromPins(self):
+        if self.startPin and (self in self.startPin.wires):
+            self.startPin.wires.remove(self)
+        if self.endPin and (self in self.endPin.wires):
+            self.endPin.wires.remove(self)
 
 class customProxyExtension(QGraphicsProxyWidget):
     def __init__(self, parent=None):
@@ -265,6 +277,12 @@ class Component(QGraphicsRectItem):
             for wire in self.outpuPin.wires:
                 wire.updatePosition()
         return super().itemChange(change, value)
+    
+    def removeFromScene(self):
+        pin: ComponentPin
+        for pin in self.inputPins:
+            pin.clearAllWires()
+        self.outpuPin.clearAllWires()
 
 
 class CircuitDesignerView(QGraphicsView):
@@ -316,18 +334,15 @@ class CircuitDesignerScene(QGraphicsScene):
                 self.lastPanPos = event.screenPos()
                 event.accept()
             case Qt.RightButton:
-                print("TODO")
                 event.accept()
             case Qt.LeftButton:
                 if (isinstance(item, ComponentPin)):
                     if (not self.drawingWire):
-                        print("start wire")
                         self.drawingWire = True
                         self.heldWire = Wire(startPin=item, startPos=event.scenePos())
                         self.addItem(self.heldWire)
                         event.accept()
                     else:
-                        print("end wire")
                         currentStartPin = self.heldWire.startPin
                         currentEndPin = item
 
@@ -347,11 +362,13 @@ class CircuitDesignerScene(QGraphicsScene):
                             currentEndPin.addWire(self.heldWire)
                             self.heldWire.updatePosition()
                         else:
+                            self.heldWire.removeFromPins()
                             self.removeItem(self.heldWire)
                         self.drawingWire = False
                         self.heldWire = None
                         event.accept()   
                 elif self.heldWire:
+                    self.heldWire.removeFromPins()
                     self.removeItem(self.heldWire)
                     self.drawingWire = False
                     self.heldWire = None
@@ -375,6 +392,16 @@ class CircuitDesignerScene(QGraphicsScene):
             super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
+        item = self.itemAt(event.scenePos(), self.views()[0].transform())
+
+        # If we clicked on a child item (like label or pin), get the parent component
+        if isinstance(item, QGraphicsTextItem) and isinstance(item.parentItem(), Component):
+            itemComponent = item.parentItem()
+        elif isinstance(item, Component):
+            itemComponent = item
+        else:
+            itemComponent = None
+
         if self.heldComponent:
             self.heldComponent = None
             event.accept()
@@ -382,6 +409,17 @@ class CircuitDesignerScene(QGraphicsScene):
             self.panning = False
             self.lastPanPos = None
             event.accept()
+        elif event.button() == Qt.RightButton:
+            if itemComponent:
+                itemComponent.removeFromScene()
+                self.removeItem(itemComponent)
+                event.accept()
+            elif isinstance(item, Wire):
+                item.removeFromPins()
+                self.removeItem(item)
+                event.accept()
+            else:
+                event.accept()
         else:
             super().mouseReleaseEvent(event)
         
