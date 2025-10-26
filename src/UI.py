@@ -30,9 +30,13 @@ class ComponentPin(QGraphicsItem):
 
     def addWire(self, wire):
         self.wires.append(wire)
+        if self.isInput:
+            self.updateAssociatedInputBox()
     
     def removeWire(self, wire):
         self.wires.remove(wire)
+        if self.isInput:
+            self.updateAssociatedInputBox()
 
     def boundingRect(self):
         return QRectF(-self.pinSize/2, -self.pinSize/2, self.pinSize, self.pinSize)
@@ -60,6 +64,29 @@ class ComponentPin(QGraphicsItem):
         
     def scenePos(self):
         return self.mapToScene(self.boundingRect().center())
+    
+    def getConnectedComponentNames(self):
+        connectedComponentNames = []
+        if len(self.wires) > 0:
+            for wire in self.wires:
+                wire: Wire
+                sourcePin = wire.startPin if wire.startPin != self else wire.endPin
+                if sourcePin and sourcePin.parentItem():
+                    sourceComponent = sourcePin.parentItem()
+                    if hasattr(sourceComponent, 'uniqueName'):
+                        connectedComponentNames.append(sourceComponent.uniqueName)
+        return connectedComponentNames
+
+    def updateAssociatedInputBox(self):
+        if self.isInput and (self.pinIndex is not None) and self.parentItem():
+            parentComponent: Component = self.parentItem()
+            connectedComponentNames = self.getConnectedComponentNames()
+            if len(connectedComponentNames) > 0:
+                combinedNames = " + ".join(connectedComponentNames)
+                parentComponent.disableInputBox(self.pinIndex, combinedNames)
+            else:
+                parentComponent.enableInputBox(self.pinIndex)
+            
     
     def clearAllWires(self):
         wire: Wire
@@ -167,9 +194,9 @@ class Wire(QGraphicsItem):
 
     def removeFromPins(self):
         if self.startPin and (self in self.startPin.wires):
-            self.startPin.wires.remove(self)
+            self.startPin.removeWire(self)
         if self.endPin and (self in self.endPin.wires):
-            self.endPin.wires.remove(self)
+            self.endPin.removeWire(self)
 
 class customProxyExtension(QGraphicsProxyWidget):
     def __init__(self, parent=None):
@@ -278,8 +305,17 @@ class Component(QGraphicsRectItem):
                 wire.updatePosition()
         return super().itemChange(change, value)
     
-    def disableInputBox(self, inputBoxIndex):
-        print("TODO")
+    def disableInputBox(self, inputBoxIndex, text=""):
+        inputBox:QLineEdit = self.inputBoxes[inputBoxIndex]
+        inputBox.setEnabled(False)
+        inputBox.setStyleSheet("background-color: #cccccc; border: 1px solid black;")
+        inputBox.setText(text)
+
+    def enableInputBox(self, inputBoxIndex):
+        inputBox:QLineEdit = self.inputBoxes[inputBoxIndex]
+        inputBox.setEnabled(True)
+        inputBox.setStyleSheet("background-color: white; border: 1px solid black;")
+        inputBox.setText("")  # Clear the text when disconnected
     
     def removeFromScene(self):
         pin: ComponentPin
@@ -366,6 +402,8 @@ class CircuitDesignerScene(QGraphicsScene):
                             self.heldWire.endPin = currentEndPin
                             currentEndPin.addWire(self.heldWire)
                             self.heldWire.updatePosition()
+                            if currentStartPin.isInput:
+                                currentStartPin.updateAssociatedInputBox()
                         else:
                             self.heldWire.removeFromPins()
                             self.removeItem(self.heldWire)
