@@ -65,8 +65,8 @@ class ComponentPin(QGraphicsItem):
     def scenePos(self):
         return self.mapToScene(self.boundingRect().center())
     
-    def getConnectedComponentNames(self):
-        connectedComponentNames = []
+    def getConnectedComponents(self):
+        connectedComponents = []
         if len(self.wires) > 0:
             for wire in self.wires:
                 wire: Wire
@@ -74,15 +74,15 @@ class ComponentPin(QGraphicsItem):
                 if sourcePin and sourcePin.parentItem():
                     sourceComponent = sourcePin.parentItem()
                     if hasattr(sourceComponent, 'uniqueName'):
-                        connectedComponentNames.append(sourceComponent.uniqueName)
-        return connectedComponentNames
+                        connectedComponents.append(sourceComponent)
+        return connectedComponents
 
     def updateAssociatedInputBox(self):
         if self.isInput and (self.pinIndex is not None) and self.parentItem():
             parentComponent: Component = self.parentItem()
-            connectedComponentNames = self.getConnectedComponentNames()
-            if len(connectedComponentNames) > 0:
-                combinedNames = " + ".join(connectedComponentNames)
+            connectedComponents = self.getConnectedComponents()
+            if len(connectedComponents) > 0:
+                combinedNames = " + ".join([f"{component.uniqueName}" for component in connectedComponents])
                 parentComponent.disableInputBox(self.pinIndex, combinedNames)
             else:
                 parentComponent.enableInputBox(self.pinIndex)
@@ -199,19 +199,32 @@ class Wire(QGraphicsItem):
             self.endPin.removeWire(self)
 
 class customProxyExtension(QGraphicsProxyWidget):
-    def __init__(self, parent=None):
+    def __init__(self, index, parent=None):
         super().__init__(parent)
+        self.index = index
         self.parent = parent
         self.setAcceptHoverEvents(True)
 
+    def setConnectedComponentHighlight(self, highlight):
+        parentComponent: Component = self.parent
+        connectedComponents = parentComponent.inputPins[self.index].getConnectedComponents()
+        for component in connectedComponents:
+            component.setHighlight(highlight)
+
     def hoverEnterEvent(self, event):
-        if (hasattr(self.parent, 'setHighlight')):
-            self.parent.setHighlight(0)
+        parentComponent: Component = self.parent
+        if (hasattr(parentComponent, 'setHighlight')):
+            parentComponent.setHighlight(0)
+        if (parentComponent.inputBoxes[self.index].isReadOnly):
+            self.setConnectedComponentHighlight(1)
         super().hoverEnterEvent(event)
         
     def hoverLeaveEvent(self, event):
-        if (hasattr(self.parent, 'setHighlight')):
-            self.parent.setHighlight(1)
+        parentComponent: Component = self.parent
+        if (hasattr(parentComponent, 'setHighlight')):
+            parentComponent.setHighlight(1)
+        if (parentComponent.inputBoxes[self.index].isReadOnly):
+            self.setConnectedComponentHighlight(0)
         super().hoverLeaveEvent(event)
 
 class Component(QGraphicsRectItem):
@@ -263,7 +276,7 @@ class Component(QGraphicsRectItem):
             inputBoxFont.setBold(True)
             inputBox.setFont(inputBoxFont)
             
-            proxy = customProxyExtension(self)
+            proxy = customProxyExtension(i, self)
             proxy.setWidget(inputBox)
             proxy.setPos(10, 25 + (i * 30))
 
@@ -307,13 +320,13 @@ class Component(QGraphicsRectItem):
     
     def disableInputBox(self, inputBoxIndex, text=""):
         inputBox:QLineEdit = self.inputBoxes[inputBoxIndex]
-        inputBox.setEnabled(False)
+        inputBox.setReadOnly(False)
         inputBox.setStyleSheet("background-color: #cccccc; border: 1px solid black;")
         inputBox.setText(text)
 
     def enableInputBox(self, inputBoxIndex):
         inputBox:QLineEdit = self.inputBoxes[inputBoxIndex]
-        inputBox.setEnabled(True)
+        inputBox.setReadOnly(True)
         inputBox.setStyleSheet("background-color: white; border: 1px solid black;")
         inputBox.setText("")  # Clear the text when disconnected
     
