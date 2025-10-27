@@ -373,10 +373,47 @@ class CircuitDesignerScene(QGraphicsScene):
     def setMainView(self):
         self.mainView = self.views()[0]
 
-    def addComponent(self, component: Component):
+    def addComponent(self, name, functionName):
+        component = Component(0, 0, name, functionName)
         self.heldComponent = component
         self.addItem(component)
 
+    def startWire(self, startPin: ComponentPin, startPos: QPointF):
+        self.drawingWire = True
+        self.heldWire = Wire(startPin=startPin, startPos=startPos)
+        self.addItem(self.heldWire)
+
+    def finishWire(self, startPin: ComponentPin, endPin: ComponentPin):
+        # Check if the pin clicked on is not the same pin we started on
+        notStartPin = (endPin != startPin)
+        # Make sure only one of the pins is an input pin
+        validConnection = (startPin.isInput != endPin.isInput)
+        # Make sure the connection is unique
+        uniqueConnection = True
+        for wire in startPin.wires:
+            if wire.endPin == endPin or wire.startPin == endPin:
+                uniqueConnection = False
+                break
+        # Make sure the clicked pin is not attached to the same component
+        notSameParent = (startPin.parent != endPin.parent)
+
+        if notStartPin and validConnection and uniqueConnection and notSameParent:
+            self.heldWire.endPin = endPin
+            endPin.addWire(self.heldWire)
+            self.heldWire.updatePosition()
+            if startPin.isInput:
+                startPin.updateAssociatedInputBox()
+            self.drawingWire = False
+            self.heldWire = None
+        else:
+            self.cancelWire()
+
+    def cancelWire(self):
+        self.heldWire.removeFromPins()
+        self.removeItem(self.heldWire)
+        self.drawingWire = False
+        self.heldWire = None
+    
     def mousePressEvent(self, event):
         item = self.itemAt(event.scenePos(), self.views()[0].transform())
 
@@ -390,44 +427,13 @@ class CircuitDesignerScene(QGraphicsScene):
             case Qt.LeftButton:
                 if (isinstance(item, ComponentPin)):
                     if (not self.drawingWire):
-                        self.drawingWire = True
-                        self.heldWire = Wire(startPin=item, startPos=event.scenePos())
-                        self.addItem(self.heldWire)
+                        self.startWire(item, event.scenePos())
                         event.accept()
                     else:
-                        currentStartPin = self.heldWire.startPin
-                        currentEndPin = item
-
-                        # Check if the pin clicked on is not the same pin we started on
-                        notStartPin = (currentEndPin != currentStartPin)
-                        # Make sure only one of the pins is an input pin
-                        validConnection = (currentStartPin.isInput != currentEndPin.isInput)
-                        # Make sure the connection is unique
-                        uniqueConnection = True
-                        for wire in currentStartPin.wires:
-                            if wire.endPin == currentEndPin or wire.startPin == currentEndPin:
-                                uniqueConnection = False
-                                break
-                        # Make sure the clicked pin is not attached to the same component
-                        notSameParent = (currentStartPin.parent != currentEndPin.parent)
-
-                        if notStartPin and validConnection and uniqueConnection and notSameParent:
-                            self.heldWire.endPin = currentEndPin
-                            currentEndPin.addWire(self.heldWire)
-                            self.heldWire.updatePosition()
-                            if currentStartPin.isInput:
-                                currentStartPin.updateAssociatedInputBox()
-                        else:
-                            self.heldWire.removeFromPins()
-                            self.removeItem(self.heldWire)
-                        self.drawingWire = False
-                        self.heldWire = None
+                        self.finishWire(self.heldWire.startPin, item)
                         event.accept()   
                 elif self.heldWire:
-                    self.heldWire.removeFromPins()
-                    self.removeItem(self.heldWire)
-                    self.drawingWire = False
-                    self.heldWire = None
+                    self.cancelWire()
                     event.accept()  
                 else:
                     super().mousePressEvent(event)
@@ -500,7 +506,7 @@ class CircuitDesignerWindow(QMainWindow):
 
         for function in constants.logicFunctions:
             tempButton = QPushButton(function)
-            tempButton.pressed.connect(lambda checked=None, x=function: self.createComponent(x))
+            tempButton.pressed.connect(lambda checked=None, x=function: self.scene.addComponent(self.getUniqueName(x), x))
             sidebarLayout.addWidget(tempButton)
         sidebarLayout.addStretch()
 
@@ -518,17 +524,12 @@ class CircuitDesignerWindow(QMainWindow):
         # Variables
         self.numOfEachFunction = {}
     
-    def setUniqueName(self, functionName):
+    def getUniqueName(self, functionName):
         if functionName in self.numOfEachFunction.keys():
             self.numOfEachFunction[functionName] = self.numOfEachFunction[functionName] + 1
         else:
             self.numOfEachFunction[functionName] = 1
         return functionName + str(self.numOfEachFunction[functionName])
-
-    def createComponent(self, functionName):
-        component = Component(0, 0, self.setUniqueName(functionName), functionName)
-        self.scene.addComponent(component)
-        
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
