@@ -2,6 +2,7 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 import constants
+import Logic
 import sys
 
 class ComponentPin(QGraphicsItem):
@@ -194,8 +195,12 @@ class Wire(QGraphicsItem):
 
     def removeFromPins(self):
         if self.startPin and (self in self.startPin.wires):
+            if self.endPin and self.startPin.isInput:
+                self.startPin.parent.updateLogicBlock(self.startPin.pinIndex, self.endPin.parent.uniqueName, True)
             self.startPin.removeWire(self)
         if self.endPin and (self in self.endPin.wires):
+            if self.startPin and self.endPin.isInput:
+                self.endPin.parent.updateLogicBlock(self.endPin.pinIndex, self.startPin.parent.uniqueName, True)
             self.endPin.removeWire(self)
 
 class customProxyExtension(QGraphicsProxyWidget):
@@ -228,15 +233,15 @@ class customProxyExtension(QGraphicsProxyWidget):
         super().hoverLeaveEvent(event)
 
 class Component(QGraphicsRectItem):
-    def __init__(self, x, y, name, function):
+    def __init__(self, x, y, name, function, logicData: Logic.LogicData):
         numInputs = (2 if (function in constants.functionsWithTwoInputs) else 1)
 
         self.width = 100
         self.height = 55 + (numInputs - 1) * 30
         super().__init__(0, 0, self.width, self.height)
         self.setPos(x, y)
-        
         self.uniqueName = name
+        self.logicData = logicData
 
         # Component Label
         label = QGraphicsTextItem(self.uniqueName, self)
@@ -275,6 +280,9 @@ class Component(QGraphicsRectItem):
             inputBoxFont = QFont()
             inputBoxFont.setBold(True)
             inputBox.setFont(inputBoxFont)
+
+            # Update Logic Data is input set
+            inputBox.editingFinished.connect(lambda checked=None, text=inputBox.text(), i=i: self.updateLogicBlock(i))
             
             proxy = customProxyExtension(i, self)
             proxy.setWidget(inputBox)
@@ -320,15 +328,27 @@ class Component(QGraphicsRectItem):
     
     def disableInputBox(self, inputBoxIndex, text=""):
         inputBox:QLineEdit = self.inputBoxes[inputBoxIndex]
-        inputBox.setReadOnly(False)
+        inputBox.setReadOnly(True)
         inputBox.setStyleSheet("background-color: #cccccc; border: 1px solid black;")
         inputBox.setText(text)
 
     def enableInputBox(self, inputBoxIndex):
         inputBox:QLineEdit = self.inputBoxes[inputBoxIndex]
-        inputBox.setReadOnly(True)
+        inputBox.setReadOnly(False)
         inputBox.setStyleSheet("background-color: white; border: 1px solid black;")
         inputBox.setText("")  # Clear the text when disconnected
+    
+    def updateLogicBlock(self, index, text=None, remove=False):
+        if text:
+            if index == 0:
+                self.logicData.updateLogicBlock(self.uniqueName, inputA=text, remove=remove)
+            else:
+                self.logicData.updateLogicBlock(self.uniqueName, inputB=text, remove=remove)
+        else:
+            if index == 0:
+                self.logicData.updateLogicBlock(self.uniqueName, inputA=self.inputBoxes[index].text())
+            else:
+                self.logicData.updateLogicBlock(self.uniqueName, inputB=self.inputBoxes[index].text())
     
     def removeFromScene(self):
         pin: ComponentPin
@@ -355,7 +375,7 @@ class CircuitDesignerView(QGraphicsView):
             self.scale(1/self.zoomFactor, 1/self.zoomFactor)
 
 class CircuitDesignerScene(QGraphicsScene):
-    def __init__(self):
+    def __init__(self, logicData: Logic.LogicData):
         super().__init__()
         self.mainView = None
 
@@ -370,11 +390,15 @@ class CircuitDesignerScene(QGraphicsScene):
         self.heldWire = None
         self.drawingWire = False
 
+        # Logic Data
+        self.logicData = logicData
+
     def setMainView(self):
         self.mainView = self.views()[0]
 
-    def addComponent(self, name, functionName):
-        component = Component(0, 0, name, functionName)
+    def addComponent(self, functionName):
+        logicBlock: Logic.LogicBlock = self.logicData.addLogicBlock(functionName)
+        component = Component(0, 0, logicBlock.name, functionName, self.logicData)
         self.heldComponent = component
         self.addItem(component)
 
@@ -403,6 +427,9 @@ class CircuitDesignerScene(QGraphicsScene):
             self.heldWire.updatePosition()
             if startPin.isInput:
                 startPin.updateAssociatedInputBox()
+                startPin.parent.updateLogicBlock(startPin.pinIndex, endPin.parent.uniqueName)
+            else:
+                endPin.parent.updateLogicBlock(endPin.pinIndex, startPin.parent.uniqueName)
             self.drawingWire = False
             self.heldWire = None
         else:
@@ -413,6 +440,17 @@ class CircuitDesignerScene(QGraphicsScene):
         self.removeItem(self.heldWire)
         self.drawingWire = False
         self.heldWire = None
+
+    def removeComponent(self, component: Component):
+        component.removeFromScene()
+        self.removeItem(component)
+
+    def removeWire(self, wire: Wire):
+        wire.removeFromPins()
+        self.removeItem(wire)
+        if self.heldWire:
+            self.drawingWire = False
+            self.heldWire = None
     
     def mousePressEvent(self, event):
         item = self.itemAt(event.scenePos(), self.views()[0].transform())
@@ -428,7 +466,7 @@ class CircuitDesignerScene(QGraphicsScene):
                 if (isinstance(item, ComponentPin)):
                     if (not self.drawingWire):
                         self.startWire(item, event.scenePos())
-                        event.accept()
+                        super().mousePressEvent(event)
                     else:
                         self.finishWire(self.heldWire.startPin, item)
                         event.accept()   
@@ -474,12 +512,10 @@ class CircuitDesignerScene(QGraphicsScene):
             event.accept()
         elif event.button() == Qt.RightButton:
             if itemComponent:
-                itemComponent.removeFromScene()
-                self.removeItem(itemComponent)
+                self.removeComponent(itemComponent)
                 event.accept()
             elif isinstance(item, Wire):
-                item.removeFromPins()
-                self.removeItem(item)
+                self.removeWire(item)
                 event.accept()
             else:
                 event.accept()
@@ -494,8 +530,11 @@ class CircuitDesignerWindow(QMainWindow):
         self.setWindowTitle("LogiBrick")
         self.setGeometry(100, 100, 1200, 720)
 
+        # Logic Data
+        self.logicData = Logic.LogicData()
+
         # Main Designer View
-        self.scene = CircuitDesignerScene()
+        self.scene = CircuitDesignerScene(self.logicData)
         self.scene.setSceneRect(0, 0, 5000, 5000)
         self.view = CircuitDesignerView(self.scene)
         self.scene.setMainView()
@@ -506,7 +545,7 @@ class CircuitDesignerWindow(QMainWindow):
 
         for function in constants.logicFunctions:
             tempButton = QPushButton(function)
-            tempButton.pressed.connect(lambda checked=None, x=function: self.scene.addComponent(self.getUniqueName(x), x))
+            tempButton.pressed.connect(lambda checked=None, functionName=function: self.scene.addComponent(functionName))
             sidebarLayout.addWidget(tempButton)
         sidebarLayout.addStretch()
 
@@ -520,16 +559,6 @@ class CircuitDesignerWindow(QMainWindow):
         mainWidget.setLayout(mainLayout)
 
         self.setCentralWidget(mainWidget)
-
-        # Variables
-        self.numOfEachFunction = {}
-    
-    def getUniqueName(self, functionName):
-        if functionName in self.numOfEachFunction.keys():
-            self.numOfEachFunction[functionName] = self.numOfEachFunction[functionName] + 1
-        else:
-            self.numOfEachFunction[functionName] = 1
-        return functionName + str(self.numOfEachFunction[functionName])
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
