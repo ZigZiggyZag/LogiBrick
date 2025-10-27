@@ -126,6 +126,12 @@ class LogicData:
 
         return logicBlock
 
+    def removeLogicBlock(self, name):
+        del self.logicData[name]
+
+        printable_dict = {k: str(v) for k, v in self.logicData.items()}
+        pprint.pprint(printable_dict)
+
     def updateLogicBlock(self, name, inputA=None, inputB=None, remove=False):
         inputAConverted = self.makeNumberifNumber(inputA) if inputA else None
         inputBConverted = self.makeNumberifNumber(inputB) if inputB else None

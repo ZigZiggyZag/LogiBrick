@@ -443,6 +443,7 @@ class CircuitDesignerScene(QGraphicsScene):
 
     def removeComponent(self, component: Component):
         component.removeFromScene()
+        self.logicData.removeLogicBlock(component.uniqueName)
         self.removeItem(component)
 
     def removeWire(self, wire: Wire):
