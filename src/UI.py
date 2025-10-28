@@ -534,6 +534,9 @@ class CircuitDesignerWindow(QMainWindow):
         # Logic Data
         self.logicData = Logic.LogicData()
 
+        # Converter
+        self.converter = Logic.LogicExporter("Test Generated", self.logicData.logicData)
+
         # Main Designer View
         self.scene = CircuitDesignerScene(self.logicData)
         self.scene.setSceneRect(0, 0, 5000, 5000)
@@ -542,15 +545,34 @@ class CircuitDesignerWindow(QMainWindow):
 
         # Sidebar
         sidebar = QWidget()
-        sidebarLayout = QVBoxLayout()
+        sidebarLayer1 = QVBoxLayout()
+        sidebarLayer2 = QHBoxLayout()
+        sidebarLayer3_1 = QVBoxLayout()
+        sidebarLayer3_2 = QVBoxLayout()
 
+        i = 0
         for function in constants.logicFunctions:
             tempButton = QPushButton(function)
             tempButton.pressed.connect(lambda checked=None, functionName=function: self.scene.addComponent(functionName))
-            sidebarLayout.addWidget(tempButton)
-        sidebarLayout.addStretch()
+            if i < (len(constants.logicFunctions)/2):
+                sidebarLayer3_1.addWidget(tempButton)
+            else:
+                sidebarLayer3_2.addWidget(tempButton)
+            i += 1
+        sidebarLayer3_1.addStretch()
+        sidebarLayer3_2.addStretch()
 
-        sidebar.setLayout(sidebarLayout)
+        sidebarLayer2.addLayout(sidebarLayer3_1)
+        sidebarLayer2.addLayout(sidebarLayer3_2)
+
+        generateButton = QPushButton("Generate")
+        generateButton.pressed.connect(self.generateCreation)
+
+        sidebarLayer1.addWidget(generateButton)
+        sidebarLayer1.addLayout(sidebarLayer2)
+
+        sidebar.setLayout(sidebarLayer1)
+        sidebar.setMaximumWidth(300)
 
         # Main Layout
         mainWidget = QWidget()
@@ -560,6 +582,10 @@ class CircuitDesignerWindow(QMainWindow):
         mainWidget.setLayout(mainLayout)
 
         self.setCentralWidget(mainWidget)
+
+    def generateCreation(self):
+        self.converter.convertLogicDataToCreation()
+        self.converter.exportCreation()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
