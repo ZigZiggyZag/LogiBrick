@@ -42,3 +42,25 @@ functionToBRName = {
     "rATAN": "Atan",
     "ATAN": "Atan"
 }
+
+tokenToFuncName = {
+    "+": "ADD",
+    "-": "SUB",
+    "*": "MULT",
+    "/": "DIV",
+    "%": "MOD",
+    "^": "POWER",
+    ">": "GREATER",
+    "<": "LESS",
+}
+
+precedence = {
+    "^": 4,
+    "*": 3,
+    "/": 3,
+    "%": 3,
+    "+": 2,
+    "-": 2,
+    ">": 1,
+    "<": 1
+}
