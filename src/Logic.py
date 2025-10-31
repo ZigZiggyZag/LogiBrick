@@ -45,63 +45,12 @@ class LogicBlock:
             if len(self.inputB) == 0:
                 self.inputB = 1
 
-class LogicData:
-    def __init__(self):
-        # Variables
-        self.numOfEachFunction = {}
-        self.logicData = {}
-
-    def makeNumberifNumber(self, string: str):
-        try:
-            return float(string)
-        except ValueError:
-            return string
-        
-    def generateUniqueName(self, name):
-        if name in self.numOfEachFunction.keys():
-            self.numOfEachFunction[name] = self.numOfEachFunction[name] + 1
-        else:
-            self.numOfEachFunction[name] = 1
-        return name + str(self.numOfEachFunction[name])
-        
-    def printLogicData(self):
-        print("--------------------------------------")
-        printable_dict = {k: str(v) for k, v in self.logicData.items()}
-        pprint.pprint(printable_dict)
-    
-    def addLogicBlock(self, function, inputA=1, inputB=1, customName=None):
-        if (not customName):
-            name = self.generateUniqueName(function)
-            logicBlock = LogicBlock(name, function, inputA, inputB)
-            self.logicData[name] = logicBlock
-        else:
-            name = self.generateUniqueName(customName)
-            logicBlock = LogicBlock(customName, function, inputA, inputB)
-            self.logicData[customName] = logicBlock
-
-        self.printLogicData()
-
-        return logicBlock
-    
-    def removeLogicBlock(self, name):
-        del self.logicData[name]
-
-        self.printLogicData()
-
-    def updateLogicBlock(self, name, inputA=None, inputB=None, remove=False):
-        inputAConverted = self.makeNumberifNumber(inputA) if inputA else None
-        inputBConverted = self.makeNumberifNumber(inputB) if inputB else None
-
-        if remove:
-             self.logicData[name].removeInputs(inputAConverted, inputBConverted)
-        else:
-            self.logicData[name].updateInputs(inputAConverted, inputBConverted)
-
-        self.printLogicData()
-
-class EquationBlockConverter:
-    def __init__(self, logicData: LogicData):
-        self.logicData = logicData
+class EquationBlock:
+    def __init__(self, name, equation = None):
+        self.name = name
+        self.equation = equation
+        self.logicBlocks = []
+        self.variableNames = []
 
     def tokenToFunctionName(self, token: str):
         if token in constants.tokenToFuncName.keys():
@@ -155,7 +104,7 @@ class EquationBlockConverter:
                     outputQueue.append(operatorStack.pop())
                 if (operatorStack[-1] == "("):
                     operatorStack.pop()
-                if ((len(operatorStack) > 0) and (operatorStack[-1] in constants.functionNames)):
+                if ((len(operatorStack) > 0) and (self.isFunctionNotOperator(operatorStack[-1]))):
                     outputQueue.append(operatorStack.pop())
             else:
                 outputQueue.append(token)
@@ -165,31 +114,102 @@ class EquationBlockConverter:
         
         return outputQueue
     
-    def generateLogicBlocks(self, equation: str):
-        revPolNoEq = self.shuntingYard(equation)
+    def generateLogicBlocks(self):
+        if (self.equation):
+            revPolNoEq = self.shuntingYard(self.equation)
+            
+            evaluationStack = []
+
+            nameIterator = 0
+
+            for token in revPolNoEq:
+                if (self.isNotFunctionOperator(token)):
+                    evaluationStack.append(token)
+                    # Non-function variables
+                    if (isinstance(self.logicData.makeNumberifNumber(token), str) and not ((self.name + token) in self.variableNames)):
+                        self.variableNames.append((self.name + token))
+                        self.logicBlocks.append(LogicBlock((self.name + token), "Add"))
+                # Functions with one input
+                elif (token != "MIN" and token != "MAX") and self.isFunctionNotOperator(token):
+                    function = self.tokenToFunctionName(token)
+                    self.logicBlocks.append(LogicBlock((self.name + (function + str(nameIterator))), function, evaluationStack.pop()))
+                    evaluationStack.append(function + str(nameIterator))
+                    nameIterator += 1
+                # Functions and Operators with two inputs
+                else:
+                    function = self.tokenToFunctionName(token)
+                    opB = evaluationStack.pop()
+                    opA = evaluationStack.pop()
+                    self.logicBlocks.append(LogicBlock((self.name + (function + str(nameIterator))), function, opA, opB))
+                    evaluationStack.append(function + str(nameIterator))
+                    nameIterator += 1
+            
+            self.logicBlocks.append(LogicBlock(self.name + "Output", "Add"))
+
+class LogicData:
+    def __init__(self):
+        # Variables
+        self.numOfEachFunction = {}
+        self.logicData = {}
+        self.equationBlocks = {}
+
+    def makeNumberifNumber(self, string: str):
+        try:
+            return float(string)
+        except ValueError:
+            return string
         
-        evaluationStack = []
-        variables = []
+    def generateUniqueName(self, name):
+        if name in self.numOfEachFunction.keys():
+            self.numOfEachFunction[name] += 1
+        else:
+            self.numOfEachFunction[name] = 1
+        return name + str(self.numOfEachFunction[name])
+        
+    def printLogicData(self):
+        print("--------------------------------------")
+        printable_dict = {k: str(v) for k, v in self.logicData.items()}
+        pprint.pprint(printable_dict)
+    
+    def addLogicBlock(self, function, inputA=1, inputB=1):
+        name = self.generateUniqueName(function)
+        logicBlock = LogicBlock(name, function, inputA, inputB)
+        self.logicData[name] = logicBlock
 
-        for token in revPolNoEq:
-            if (self.isNotFunctionOperator(token)):
-                evaluationStack.append(token)
-                if (isinstance(self.logicData.makeNumberifNumber(token), str) and not (token in variables)):
-                    variables.append(token)
-                    self.logicData.addLogicBlock("ADD", custonName=token)
-            elif (token != "MIN" and token != "MAX") and self.isFunctionNotOperator(token):
-                blockName = self.tokenToFunctionName(token)
-                logicBlock = self.logicData.addLogicBlock(blockName, evaluationStack.pop())
-                evaluationStack.append(logicBlock.name)
-            else:
-                blockName = self.tokenToFunctionName(token)
-                opB = evaluationStack.pop()
-                opA = evaluationStack.pop()
-                logicBlock = self.logicData.addLogicBlock(blockName, opA, opB)
-                evaluationStack.append(logicBlock.name)
+        #self.printLogicData()
 
-        #generateMathBrick(creation, "FinalOutput", "Add", makeNumberifNumber(evaluationStack.pop()), 0, y = -10)
-        #generateTextBrick(creation, "FullEquation", equation, x = 10, z = 5, zrot = -90)
+        return logicBlock
+    
+    def removeLogicBlock(self, name):
+        del self.logicData[name]
+        #self.printLogicData()
+
+    def addEquationBlock(self, equation: str = None):
+        equationBlock = EquationBlock(self.generateUniqueName("EQN"), equation)
+        self.equationBlocks[equationBlock.name] = equationBlock
+        equationBlock.generateLogicBlocks()
+        logicBlock: LogicBlock
+        for logicBlock in equationBlock.logicBlocks:
+            self.logicData[logicBlock.name] = logicBlock
+        return equationBlock
+
+    def removeEquationBlock(self, name):
+        equationBlock: EquationBlock = self.equationBlocks[name]
+        logicBlock: LogicBlock
+        for logicBlock in equationBlock.logicBlocks:
+            del self.logicData[logicBlock.name]
+        del self.equationBlocks[name]
+
+    def updateLogicBlock(self, name, inputA=None, inputB=None, remove=False):
+        inputAConverted = self.makeNumberifNumber(inputA) if inputA else None
+        inputBConverted = self.makeNumberifNumber(inputB) if inputB else None
+
+        if remove:
+             self.logicData[name].removeInputs(inputAConverted, inputBConverted)
+        else:
+            self.logicData[name].updateInputs(inputAConverted, inputBConverted)
+
+        self.printLogicData()
 
 
 class LogicExporter:

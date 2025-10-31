@@ -234,7 +234,12 @@ class customProxyExtension(QGraphicsProxyWidget):
 
 class Component(QGraphicsRectItem):
     def __init__(self, x, y, name, function, logicData: Logic.LogicData):
-        numInputs = (2 if (function in constants.functionsWithTwoInputs) else 1)
+        self.equationBlock: Logic.EquationBlock = None
+        if function == "EQN":
+            self.equationBlock: Logic.EquationBlock = self.logicData.equationBlocks[name]
+            numInputs = len(self.equationBlock.variableNames)
+        else:
+            numInputs = (2 if (function in constants.functionsWithTwoInputs) else 1)
 
         self.width = 100
         self.height = 55 + (numInputs - 1) * 30
@@ -267,6 +272,18 @@ class Component(QGraphicsRectItem):
         self.setFlag(QGraphicsItem.ItemSendsGeometryChanges)
         self.setAcceptHoverEvents(True)
 
+        # Extra Input Box for Equation
+
+        if self.equationBlock:
+            equationBox = QGraphicsTextItem(self.equationBlock.equation, self)
+            equationBox.setDefaultTextColor(Qt.black)
+            font2 = QFont()
+            font2.setPointSize(6)
+            equationBox.setFont(font)
+            text_width2 = label.boundingRect().width()
+            equationBox.setPos((self.width - text_width2) / 2, 25)
+            equationBox.setTextInteractionFlags(Qt.NoTextInteraction)
+
         # Input Boxes
         self.inputBoxes = []
         self.inputBoxProxies = []
@@ -286,7 +303,7 @@ class Component(QGraphicsRectItem):
             
             proxy = customProxyExtension(i, self)
             proxy.setWidget(inputBox)
-            proxy.setPos(10, 25 + (i * 30))
+            proxy.setPos(10, 50 + (i * 30))
 
             self.inputBoxes.append(inputBox)
             self.inputBoxProxies.append(proxy)
@@ -297,7 +314,7 @@ class Component(QGraphicsRectItem):
         self.inputPins = []
 
         for i in range(numInputs):
-            pinYPos = (34 + (i * 30))
+            pinYPos = (60 + (i * 30))
             pin = ComponentPin(0, pinYPos, True, self, i)
             self.inputPins.append(pin)
 
@@ -399,6 +416,12 @@ class CircuitDesignerScene(QGraphicsScene):
     def addComponent(self, functionName):
         logicBlock: Logic.LogicBlock = self.logicData.addLogicBlock(functionName)
         component = Component(0, 0, logicBlock.name, functionName, self.logicData)
+        self.heldComponent = component
+        self.addItem(component)
+
+    def addComponentEq(self, equation):
+        equationBlock: Logic.EquationBlock = self.logicData.addEquationBlock(equation)
+        component = Component(0, 0, equationBlock.name, "EQN", self.logicData)
         self.heldComponent = component
         self.addItem(component)
 
@@ -568,7 +591,12 @@ class CircuitDesignerWindow(QMainWindow):
         generateButton = QPushButton("Generate")
         generateButton.pressed.connect(self.generateCreation)
 
+        equationButton = QPushButton("Equation")
+        equationButton.pressed.connect(lambda: print("TODO"))
+
         sidebarLayer1.addWidget(generateButton)
+        sidebarLayer1.addItem(QSpacerItem(0, 15, QSizePolicy.Fixed, QSizePolicy.Minimum))
+        sidebarLayer1.addWidget(equationButton)
         sidebarLayer1.addLayout(sidebarLayer2)
 
         sidebar.setLayout(sidebarLayer1)
