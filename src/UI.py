@@ -196,11 +196,17 @@ class Wire(QGraphicsItem):
     def removeFromPins(self):
         if self.startPin and (self in self.startPin.wires):
             if self.endPin and self.startPin.isInput:
-                self.startPin.parent.updateLogicBlock(self.startPin.pinIndex, self.endPin.parent.uniqueName, True)
+                if (self.endPin.parent.function == "EQN"):
+                    self.startPin.parent.updateLogicBlock(self.startPin.pinIndex, self.endPin.parent.equationBlock.variableNames[self.startPin.pinIndex], True)
+                else:
+                    self.startPin.parent.updateLogicBlock(self.startPin.pinIndex, self.endPin.parent.uniqueName, True)
             self.startPin.removeWire(self)
         if self.endPin and (self in self.endPin.wires):
             if self.startPin and self.endPin.isInput:
-                self.endPin.parent.updateLogicBlock(self.endPin.pinIndex, self.startPin.parent.uniqueName, True)
+                if (self.startPin.parent.function == "EQN"):
+                    self.endPin.parent.updateLogicBlock(self.endPin.pinIndex, self.startPin.parent.equationBlock.variableNames[self.endPin.pinIndex], True)
+                else:
+                    self.endPin.parent.updateLogicBlock(self.endPin.pinIndex, self.startPin.parent.uniqueName, True)
             self.endPin.removeWire(self)
 
 class customProxyExtension(QGraphicsProxyWidget):
@@ -234,19 +240,27 @@ class customProxyExtension(QGraphicsProxyWidget):
 
 class Component(QGraphicsRectItem):
     def __init__(self, x, y, name, function, logicData: Logic.LogicData):
+        self.logicData = logicData
+        self.function = function
+
+        self.variableToIndex = {}
+
         self.equationBlock: Logic.EquationBlock = None
-        if function == "EQN":
+        self.outputBlockName = None
+        if self.function == "EQN":
             self.equationBlock: Logic.EquationBlock = self.logicData.equationBlocks[name]
             numInputs = len(self.equationBlock.variableNames)
+            self.outputBlockName = self.equationBlock.outputBlockName
         else:
-            numInputs = (2 if (function in constants.functionsWithTwoInputs) else 1)
+            numInputs = (2 if (self.function in constants.functionsWithTwoInputs) else 1)
+
+        heightOffset = 30 if (self.function == "EQN") else 0
 
         self.width = 100
-        self.height = 55 + (numInputs - 1) * 30
+        self.height = 55 + heightOffset + (numInputs - 1) * 30
         super().__init__(0, 0, self.width, self.height)
         self.setPos(x, y)
         self.uniqueName = name
-        self.logicData = logicData
 
         # Component Label
         label = QGraphicsTextItem(self.uniqueName, self)
@@ -274,13 +288,13 @@ class Component(QGraphicsRectItem):
 
         # Extra Input Box for Equation
 
-        if self.equationBlock:
+        if self.function == "EQN":
             equationBox = QGraphicsTextItem(self.equationBlock.equation, self)
             equationBox.setDefaultTextColor(Qt.black)
             font2 = QFont()
             font2.setPointSize(6)
             equationBox.setFont(font)
-            text_width2 = label.boundingRect().width()
+            text_width2 = equationBox.boundingRect().width()
             equationBox.setPos((self.width - text_width2) / 2, 25)
             equationBox.setTextInteractionFlags(Qt.NoTextInteraction)
 
@@ -289,6 +303,9 @@ class Component(QGraphicsRectItem):
         self.inputBoxProxies = []
 
         for i in range(numInputs):
+            # if (self.equationBlock):
+            #     self.variableToIndex[i] = self.equationBlock.variableNames[i]
+
             inputBox = QLineEdit()
             inputBox.setValidator(QDoubleValidator())
             inputBox.setMaximumWidth(self.width - 25)
@@ -303,7 +320,7 @@ class Component(QGraphicsRectItem):
             
             proxy = customProxyExtension(i, self)
             proxy.setWidget(inputBox)
-            proxy.setPos(10, 50 + (i * 30))
+            proxy.setPos(10, 28 + heightOffset + (i * 30))
 
             self.inputBoxes.append(inputBox)
             self.inputBoxProxies.append(proxy)
@@ -314,7 +331,7 @@ class Component(QGraphicsRectItem):
         self.inputPins = []
 
         for i in range(numInputs):
-            pinYPos = (60 + (i * 30))
+            pinYPos = (37 + heightOffset + (i * 30))
             pin = ComponentPin(0, pinYPos, True, self, i)
             self.inputPins.append(pin)
 
@@ -356,16 +373,22 @@ class Component(QGraphicsRectItem):
         inputBox.setText("")  # Clear the text when disconnected
     
     def updateLogicBlock(self, index, text=None, remove=False):
-        if text:
-            if index == 0:
-                self.logicData.updateLogicBlock(self.uniqueName, inputA=text, remove=remove)
+        if (self.function == "EQN"):
+            if text:
+                self.logicData.updateLogicBlock(self.equationBlock.variableNames[index], inputA=text, inputB = 0, remove=remove)
             else:
-                self.logicData.updateLogicBlock(self.uniqueName, inputB=text, remove=remove)
+                self.logicData.updateLogicBlock(self.equationBlock.variableNames[index], inputA=self.inputBoxes[index].text(), inputB = 0)
         else:
-            if index == 0:
-                self.logicData.updateLogicBlock(self.uniqueName, inputA=self.inputBoxes[index].text())
+            if text:
+                if index == 0:
+                    self.logicData.updateLogicBlock(self.uniqueName, inputA=text, remove=remove)
+                else:
+                    self.logicData.updateLogicBlock(self.uniqueName, inputB=text, remove=remove)
             else:
-                self.logicData.updateLogicBlock(self.uniqueName, inputB=self.inputBoxes[index].text())
+                if index == 0:
+                    self.logicData.updateLogicBlock(self.uniqueName, inputA=self.inputBoxes[index].text())
+                else:
+                    self.logicData.updateLogicBlock(self.uniqueName, inputB=self.inputBoxes[index].text())
     
     def removeFromScene(self):
         pin: ComponentPin
@@ -448,11 +471,30 @@ class CircuitDesignerScene(QGraphicsScene):
             self.heldWire.endPin = endPin
             endPin.addWire(self.heldWire)
             self.heldWire.updatePosition()
-            if startPin.isInput:
-                startPin.updateAssociatedInputBox()
-                startPin.parent.updateLogicBlock(startPin.pinIndex, endPin.parent.uniqueName)
+            if startPin.parent.function == "EQN":
+                if startPin.isInput:
+                    startPin.updateAssociatedInputBox()
+                    if endPin.parent.function == "EQN":
+                        print("startPin is EQN, endPin is EQN")
+                        startPin.parent.updateLogicBlock(startPin.pinIndex, endPin.parent.outputBlockName)
+                    else:
+                        print("startPin is EQN, endPin is not EQN")
+                        startPin.parent.updateLogicBlock(startPin.pinIndex, endPin.parent.uniqueName)
+                else:
+                    print ("test1")
+                    endPin.parent.updateLogicBlock(endPin.pinIndex, startPin.parent.outputBlockName)
             else:
-                endPin.parent.updateLogicBlock(endPin.pinIndex, startPin.parent.uniqueName)
+                if startPin.isInput:
+                    startPin.updateAssociatedInputBox()
+                    if endPin.parent.function == "EQN":
+                        print("startPin is not EQN, endPin is EQN")
+                        startPin.parent.updateLogicBlock(startPin.pinIndex, endPin.parent.outputBlockName)
+                    else:
+                        print("startPin is not EQN, endPin is not EQN")
+                        startPin.parent.updateLogicBlock(startPin.pinIndex, endPin.parent.uniqueName)
+                else:
+                    print ("test2")
+                    endPin.parent.updateLogicBlock(endPin.pinIndex, startPin.parent.uniqueName)
             self.drawingWire = False
             self.heldWire = None
         else:
@@ -466,7 +508,10 @@ class CircuitDesignerScene(QGraphicsScene):
 
     def removeComponent(self, component: Component):
         component.removeFromScene()
-        self.logicData.removeLogicBlock(component.uniqueName)
+        if (component.function == "EQN"):
+            self.logicData.removeEquationBlock(component.uniqueName)
+        else:
+            self.logicData.removeLogicBlock(component.uniqueName)
         self.removeItem(component)
 
     def removeWire(self, wire: Wire):
@@ -592,7 +637,7 @@ class CircuitDesignerWindow(QMainWindow):
         generateButton.pressed.connect(self.generateCreation)
 
         equationButton = QPushButton("Equation")
-        equationButton.pressed.connect(lambda: print("TODO"))
+        equationButton.pressed.connect(self.equationPopup)
 
         sidebarLayer1.addWidget(generateButton)
         sidebarLayer1.addItem(QSpacerItem(0, 15, QSizePolicy.Fixed, QSizePolicy.Minimum))
@@ -610,6 +655,14 @@ class CircuitDesignerWindow(QMainWindow):
         mainWidget.setLayout(mainLayout)
 
         self.setCentralWidget(mainWidget)
+
+    def equationPopup(self):
+        text, ok = QInputDialog.getText(self, 'Equation', 'Enter Equation: ')
+
+        if ok and text:
+            self.scene.addComponentEq(text)
+        elif ok:
+            QMessageBox.warning(self, 'Error!', 'Please enter equation!')
 
     def generateCreation(self):
         self.converter.convertLogicDataToCreation()

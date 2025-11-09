@@ -33,7 +33,6 @@ class LogicBlock:
                 self.inputB = inputB
 
     def removeInputs(self, inputA=None, inputB=None):
-        print("removeInputsCalled")
         if inputA and isinstance(inputA, str) and isinstance(self.inputA, list):
             print(f"removing {inputA}")
             self.inputA.remove(inputA)
@@ -50,6 +49,7 @@ class EquationBlock:
         self.name = name
         self.equation = equation
         self.logicBlocks = []
+        self.outputBlockName = None
         self.variableNames = []
 
     def tokenToFunctionName(self, token: str):
@@ -123,28 +123,40 @@ class EquationBlock:
             nameIterator = 0
 
             for token in revPolNoEq:
+                # variables or numbers
                 if (self.isNotFunctionOperator(token)):
-                    evaluationStack.append(token)
-                    # Non-function variables
-                    if (isinstance(self.logicData.makeNumberifNumber(token), str) and not ((self.name + token) in self.variableNames)):
-                        self.variableNames.append((self.name + token))
-                        self.logicBlocks.append(LogicBlock((self.name + token), "Add"))
+                    # variables
+                    if (isinstance(constants.makeNumberifNumber(token), str)):
+                        evaluationStack.append(self.name + token)
+                        if (not ((self.name + token) in self.variableNames)):
+                            self.variableNames.append((self.name + token))
+                            self.logicBlocks.append(LogicBlock((self.name + token), "Add"))
+                    # numbers
+                    else:
+                        evaluationStack.append(token)
                 # Functions with one input
                 elif (token != "MIN" and token != "MAX") and self.isFunctionNotOperator(token):
                     function = self.tokenToFunctionName(token)
-                    self.logicBlocks.append(LogicBlock((self.name + (function + str(nameIterator))), function, evaluationStack.pop()))
-                    evaluationStack.append(function + str(nameIterator))
+                    self.logicBlocks.append(LogicBlock((self.name + (function + str(nameIterator))), function, constants.makeNumberifNumber(evaluationStack.pop())))
+                    evaluationStack.append(self.name + (function + str(nameIterator)))
                     nameIterator += 1
                 # Functions and Operators with two inputs
                 else:
                     function = self.tokenToFunctionName(token)
                     opB = evaluationStack.pop()
                     opA = evaluationStack.pop()
-                    self.logicBlocks.append(LogicBlock((self.name + (function + str(nameIterator))), function, opA, opB))
-                    evaluationStack.append(function + str(nameIterator))
+                    self.logicBlocks.append(LogicBlock((self.name + (function + str(nameIterator))), function, constants.makeNumberifNumber(opA), constants.makeNumberifNumber(opB)))
+                    evaluationStack.append(self.name + (function + str(nameIterator)))
                     nameIterator += 1
             
-            self.logicBlocks.append(LogicBlock(self.name + "Output", "Add"))
+            self.logicBlocks.append(LogicBlock(self.name + "Output", "Add", evaluationStack.pop()))
+            self.outputBlockName = (self.name + "Output")
+    
+    def updateEquation(self, equation):
+        self.equation = equation
+        self.logicBlocks = []
+        self.variableNames = []
+        self.generateLogicBlocks()
 
 class LogicData:
     def __init__(self):
@@ -152,12 +164,6 @@ class LogicData:
         self.numOfEachFunction = {}
         self.logicData = {}
         self.equationBlocks = {}
-
-    def makeNumberifNumber(self, string: str):
-        try:
-            return float(string)
-        except ValueError:
-            return string
         
     def generateUniqueName(self, name):
         if name in self.numOfEachFunction.keys():
@@ -183,6 +189,17 @@ class LogicData:
     def removeLogicBlock(self, name):
         del self.logicData[name]
         #self.printLogicData()
+    
+    def updateLogicBlock(self, name, inputA=None, inputB=None, remove=False):
+        inputAConverted = constants.makeNumberifNumber(inputA) if inputA != None else None
+        inputBConverted = constants.makeNumberifNumber(inputB) if inputB != None else None
+
+        if remove:
+             self.logicData[name].removeInputs(inputAConverted, inputBConverted)
+        else:
+            self.logicData[name].updateInputs(inputAConverted, inputBConverted)
+
+        self.printLogicData()
 
     def addEquationBlock(self, equation: str = None):
         equationBlock = EquationBlock(self.generateUniqueName("EQN"), equation)
@@ -191,6 +208,9 @@ class LogicData:
         logicBlock: LogicBlock
         for logicBlock in equationBlock.logicBlocks:
             self.logicData[logicBlock.name] = logicBlock
+        
+        self.printLogicData()
+
         return equationBlock
 
     def removeEquationBlock(self, name):
@@ -200,16 +220,21 @@ class LogicData:
             del self.logicData[logicBlock.name]
         del self.equationBlocks[name]
 
-    def updateLogicBlock(self, name, inputA=None, inputB=None, remove=False):
-        inputAConverted = self.makeNumberifNumber(inputA) if inputA else None
-        inputBConverted = self.makeNumberifNumber(inputB) if inputB else None
-
-        if remove:
-             self.logicData[name].removeInputs(inputAConverted, inputBConverted)
-        else:
-            self.logicData[name].updateInputs(inputAConverted, inputBConverted)
-
         self.printLogicData()
+
+    def updateEquationBlock(self, name, equation):
+        equationBlock: EquationBlock = self.equationBlocks[name]
+        # Remove related equation blocks
+        logicBlock: LogicBlock
+        for logicBlock in equationBlock.logicBlocks:
+            del self.logicData[logicBlock.name]
+        # update equation block equation
+        equationBlock.updateEquation(equation)
+        # re-add equation blocks
+        for logicBlock in equationBlock.logicBlocks:
+            self.logicData[logicBlock.name] = logicBlock
+        return equationBlock
+        
 
 
 class LogicExporter:

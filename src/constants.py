@@ -64,3 +64,9 @@ precedence = {
     ">": 1,
     "<": 1
 }
+
+def makeNumberifNumber(string: str):
+        try:
+            return float(string)
+        except ValueError:
+            return string
