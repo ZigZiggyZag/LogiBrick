@@ -645,7 +645,7 @@ class CircuitDesignerWindow(QMainWindow):
         self.logicData = Logic.LogicData()
 
         # Converter
-        self.converter = Logic.LogicExporter("Test Generated", self.logicData.logicData)
+        self.converter = Logic.LogicExporter(self.logicData.logicData)
 
         # Main Designer View
         self.scene = CircuitDesignerScene(self.logicData)
@@ -676,7 +676,7 @@ class CircuitDesignerWindow(QMainWindow):
         sidebarLayer2.addLayout(sidebarLayer3_2)
 
         generateButton = QPushButton("Generate")
-        generateButton.pressed.connect(self.generateCreation)
+        generateButton.pressed.connect(self.generatePopup)
 
         equationButton = QPushButton("Equation")
         equationButton.pressed.connect(self.equationPopup)
@@ -698,6 +698,14 @@ class CircuitDesignerWindow(QMainWindow):
 
         self.setCentralWidget(mainWidget)
 
+    def generatePopup(self):
+        text, ok = QInputDialog.getText(self, 'Creation Name', 'Enter Name: ')
+
+        if ok and text:
+            self.converter.convertLogicDataToCreation(text)
+        elif ok:
+            QMessageBox.warning(self, 'Error!', 'Please enter name!')
+
     def equationPopup(self):
         text, ok = QInputDialog.getText(self, 'Equation', 'Enter Equation: ')
 
@@ -705,10 +713,6 @@ class CircuitDesignerWindow(QMainWindow):
             self.scene.addComponentEq(text)
         elif ok:
             QMessageBox.warning(self, 'Error!', 'Please enter equation!')
-
-    def generateCreation(self):
-        self.converter.convertLogicDataToCreation()
-        self.converter.exportCreation()
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)

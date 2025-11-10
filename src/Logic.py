@@ -245,18 +245,14 @@ class LogicData:
 
 
 class LogicExporter:
-    def __init__(self, name, logicData: LogicData):
-        self.creation: BRCI.ModernCreation = BRCI.Creation14(
-            project_name=name,
-            project_dir=BRCI.ModernCreation.get_brick_rigs_vehicle_folder()
-        )
+    def __init__(self, logicData: LogicData):
         self.logicData = logicData
         self.convertedBlocks = []
         self.x = 10
         self.y = 0
     
-    def generateMathBrick(self, brickName: str, operation: str, inputA: float | list = 1, inputB: float | list = 1, x = 0, y = 0, z = 0):
-        self.creation.add_brick(
+    def generateMathBrick(self, creation: BRCI.ModernCreation, brickName: str, operation: str, inputA: float | list = 1, inputB: float | list = 1, x = 0, y = 0, z = 0):
+        creation.add_brick(
             'MathBrick_1sx1sx1s',
             brickName,
             position=[x, y, z],
@@ -272,8 +268,8 @@ class LogicExporter:
             }
         )
     
-    def generateTextBrick(self, brickName: str, text: str, x = 0, y = 0, z = 0, xrot = 0, yrot = 0, zrot = 0):
-        self.creation.add_brick(
+    def generateTextBrick(self, creation: BRCI.ModernCreation, brickName: str, text: str, x = 0, y = 0, z = 0, xrot = 0, yrot = 0, zrot = 0):
+        creation.add_brick(
             'TextBrick',
             brickName,
             position=[x, y, z],
@@ -292,33 +288,37 @@ class LogicExporter:
             self.y += 10
         return oldXY
 
-    def convertLogicBlock(self, logicBlock: LogicBlock):
+    def convertLogicBlock(self, logicBlock: LogicBlock, creation: BRCI.ModernCreation):
         if (logicBlock.name not in self.convertedBlocks):
             if (isinstance(logicBlock.inputA, list)):
                 for blockName in logicBlock.inputA:
-                    self.convertLogicBlock(self.logicData[blockName])
+                    self.convertLogicBlock(self.logicData[blockName], creation)
             if (isinstance(logicBlock.inputB, list)):
                 for blockName in logicBlock.inputB:
-                    self.convertLogicBlock(self.logicData[blockName])
+                    self.convertLogicBlock(self.logicData[blockName], creation)
             if (logicBlock.separate):
                 coordinates = self.returnAndIncrementCoordinates()
-                self.generateMathBrick(logicBlock.name, constants.functionToBRName[logicBlock.function], logicBlock.inputA, logicBlock.inputB, x=coordinates[0], y=coordinates[1], z=0)
-                self.generateTextBrick((logicBlock.name + "TEXT"), logicBlock.name, x=coordinates[0], y=coordinates[1], z=6)
+                self.generateMathBrick(creation, logicBlock.name, constants.functionToBRName[logicBlock.function], logicBlock.inputA, logicBlock.inputB, x=coordinates[0], y=coordinates[1], z=0)
+                self.generateTextBrick(creation, (logicBlock.name + "TEXT"), logicBlock.name, x=coordinates[0], y=coordinates[1], z=6)
             else:
-                self.generateMathBrick(logicBlock.name, constants.functionToBRName[logicBlock.function], logicBlock.inputA, logicBlock.inputB, x=0, y=0, z=0)
+                self.generateMathBrick(creation, logicBlock.name, constants.functionToBRName[logicBlock.function], logicBlock.inputA, logicBlock.inputB, x=0, y=0, z=0)
             self.convertedBlocks.append(logicBlock.name)
 
-    def convertLogicDataToCreation(self):
-        self.creation.bricks = []
+    def convertLogicDataToCreation(self, name: str="generated"):
+        creation: BRCI.ModernCreation = BRCI.Creation14(
+            project_name=name,
+            project_dir=BRCI.ModernCreation.get_brick_rigs_vehicle_folder()
+        )
+
         for block in self.logicData.values():
             if (block not in self.convertedBlocks):
-                self.convertLogicBlock(block)
-        print("Creation Generated")
+                self.convertLogicBlock(block, creation)
+        print("Logic Converted")
         self.convertedBlocks = []
         self.x = 10
         self.y = 0
 
-    def exportCreation(self):
-        self.creation.write_creation(exist_ok=True)
-        self.creation.write_metadata(exist_ok=True)
+        creation.write_creation(exist_ok=True)
+        creation.write_metadata(exist_ok=True)
         print("Creation Written")
+        
