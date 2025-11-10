@@ -2,9 +2,10 @@ import constants
 import BRCI
 
 import pprint
+import random
 
 class LogicBlock:
-    def __init__(self, name, function, inputA=1, inputB=1, separate: bool=False):
+    def __init__(self, name, function, inputA=0, inputB=0, separate: bool=False):
         self.name = name
         self.function = function
         self.inputA = None
@@ -141,7 +142,7 @@ class EquationBlock:
                 # Functions with one input
                 elif (token != "MIN" and token != "MAX") and self.isFunctionNotOperator(token):
                     function = self.tokenToFunctionName(token)
-                    self.logicBlocks.append(LogicBlock((self.name + (function + str(nameIterator))), function, constants.makeNumberifNumber(evaluationStack.pop())))
+                    self.logicBlocks.append(LogicBlock((self.name + (function + str(nameIterator))), function, constants.makeNumberifNumber(evaluationStack.pop()), 0))
                     evaluationStack.append(self.name + (function + str(nameIterator)))
                     nameIterator += 1
                 # Functions and Operators with two inputs
@@ -153,7 +154,7 @@ class EquationBlock:
                     evaluationStack.append(self.name + (function + str(nameIterator)))
                     nameIterator += 1
             
-            self.logicBlocks.append(LogicBlock(self.name + "Output", "ADD", evaluationStack.pop()))
+            self.logicBlocks.append(LogicBlock(self.name + "Output", "ADD", evaluationStack.pop(), 0))
             self.outputBlockName = (self.name + "Output")
     
     def updateEquation(self, equation):
@@ -251,13 +252,14 @@ class LogicExporter:
         self.x = 10
         self.y = 0
     
-    def generateMathBrick(self, creation: BRCI.ModernCreation, brickName: str, operation: str, inputA: float | list = 1, inputB: float | list = 1, x = 0, y = 0, z = 0):
+    def generateMathBrick(self, creation: BRCI.ModernCreation, brickName: str, operation: str, inputA: float | list = 1, inputB: float | list = 1, x = 0, y = 0, z = 0, color = [0, 0, 127, 255]):
         creation.add_brick(
             'MathBrick_1sx1sx1s',
             brickName,
             position=[x, y, z],
             rotation=[0, 0, 0],
             properties={
+                "BrickColor": color,
                 "Operation": operation,
                 "InputChannelA.InputAxis" : ("Custom" if isinstance(inputA, list) else "AlwaysOn"),
                 "InputChannelA.SourceBricks": (inputA if isinstance(inputA, list) else []),
@@ -268,13 +270,14 @@ class LogicExporter:
             }
         )
     
-    def generateTextBrick(self, creation: BRCI.ModernCreation, brickName: str, text: str, x = 0, y = 0, z = 0, xrot = 0, yrot = 0, zrot = 0):
+    def generateTextBrick(self, creation: BRCI.ModernCreation, brickName: str, text: str, x = 0, y = 0, z = 0, xrot = 0, yrot = 0, zrot = 0, color = [0, 0, 127, 255]):
         creation.add_brick(
             'TextBrick',
             brickName,
             position=[x, y, z],
             rotation=[xrot, yrot, zrot],
             properties={
+                "BrickColor": color,
                 "BrickSize" : [1.0, 1.0, 1.0],
                 "Text" : text
             }
@@ -288,7 +291,7 @@ class LogicExporter:
             self.y += 10
         return oldXY
 
-    def convertLogicBlock(self, logicBlock: LogicBlock, creation: BRCI.ModernCreation):
+    def convertLogicBlock(self, logicBlock: LogicBlock, creation: BRCI.ModernCreation, defaultColor=[0, 0, 127, 255]):
         if (logicBlock.name not in self.convertedBlocks):
             if (isinstance(logicBlock.inputA, list)):
                 for blockName in logicBlock.inputA:
@@ -298,10 +301,11 @@ class LogicExporter:
                     self.convertLogicBlock(self.logicData[blockName], creation)
             if (logicBlock.separate):
                 coordinates = self.returnAndIncrementCoordinates()
-                self.generateMathBrick(creation, logicBlock.name, constants.functionToBRName[logicBlock.function], logicBlock.inputA, logicBlock.inputB, x=coordinates[0], y=coordinates[1], z=0)
-                self.generateTextBrick(creation, (logicBlock.name + "TEXT"), logicBlock.name, x=coordinates[0], y=coordinates[1], z=6)
+                randomColor = [random.randint(0, 255), random.randint(0, 255), random.randint(0, 255), 255]
+                self.generateMathBrick(creation, logicBlock.name, constants.functionToBRName[logicBlock.function], logicBlock.inputA, logicBlock.inputB, x=coordinates[0], y=coordinates[1], z=0, color=randomColor)
+                self.generateTextBrick(creation, (logicBlock.name + "TEXT"), logicBlock.name, x=coordinates[0], y=coordinates[1], z=6, zrot = -90, color=randomColor)
             else:
-                self.generateMathBrick(creation, logicBlock.name, constants.functionToBRName[logicBlock.function], logicBlock.inputA, logicBlock.inputB, x=0, y=0, z=0)
+                self.generateMathBrick(creation, logicBlock.name, constants.functionToBRName[logicBlock.function], logicBlock.inputA, logicBlock.inputB, x=0, y=0, z=0, color=defaultColor)
             self.convertedBlocks.append(logicBlock.name)
 
     def convertLogicDataToCreation(self, name: str="generated"):
@@ -310,9 +314,11 @@ class LogicExporter:
             project_dir=BRCI.ModernCreation.get_brick_rigs_vehicle_folder()
         )
 
+        randomColor = [random.randint(0, 255), random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)]
+
         for block in self.logicData.values():
             if (block not in self.convertedBlocks):
-                self.convertLogicBlock(block, creation)
+                self.convertLogicBlock(block, creation, defaultColor=randomColor)
         print("Logic Converted")
         self.convertedBlocks = []
         self.x = 10
