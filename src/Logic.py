@@ -4,15 +4,19 @@ import BRCI
 import pprint
 
 class LogicBlock:
-    def __init__(self, name, function, inputA=1, inputB=1):
+    def __init__(self, name, function, inputA=1, inputB=1, separate: bool=False):
         self.name = name
         self.function = function
         self.inputA = None
         self.inputB = None
+        self.separate = separate
         self.updateInputs(inputA, inputB)
 
     def __str__(self):
         return f"[Name: {self.name}, Function: {self.function}, inputA: {self.inputA}, inputB: {self.inputB}]"
+
+    def setSeparate(self, separate: bool):
+        self.separate = separate
 
     def updateInputs(self, inputA=None, inputB=None):
         if inputA != None:
@@ -130,7 +134,7 @@ class EquationBlock:
                         evaluationStack.append(self.name + token)
                         if (not ((self.name + token) in self.variableNames)):
                             self.variableNames.append((self.name + token))
-                            self.logicBlocks.append(LogicBlock((self.name + token), "Add"))
+                            self.logicBlocks.append(LogicBlock((self.name + token), "ADD"))
                     # numbers
                     else:
                         evaluationStack.append(token)
@@ -149,7 +153,7 @@ class EquationBlock:
                     evaluationStack.append(self.name + (function + str(nameIterator)))
                     nameIterator += 1
             
-            self.logicBlocks.append(LogicBlock(self.name + "Output", "Add", evaluationStack.pop()))
+            self.logicBlocks.append(LogicBlock(self.name + "Output", "ADD", evaluationStack.pop()))
             self.outputBlockName = (self.name + "Output")
     
     def updateEquation(self, equation):
@@ -201,6 +205,9 @@ class LogicData:
 
         self.printLogicData()
 
+    def separateLogicBlock(self, name, separate: bool=False):
+        self.logicData[name].setSeparate(separate)
+
     def addEquationBlock(self, equation: str = None):
         equationBlock = EquationBlock(self.generateUniqueName("EQN"), equation)
         self.equationBlocks[equationBlock.name] = equationBlock
@@ -245,7 +252,7 @@ class LogicExporter:
         )
         self.logicData = logicData
         self.convertedBlocks = []
-        self.x = 0
+        self.x = 10
         self.y = 0
     
     def generateMathBrick(self, brickName: str, operation: str, inputA: float | list = 1, inputB: float | list = 1, x = 0, y = 0, z = 0):
@@ -265,6 +272,18 @@ class LogicExporter:
             }
         )
     
+    def generateTextBrick(self, brickName: str, text: str, x = 0, y = 0, z = 0, xrot = 0, yrot = 0, zrot = 0):
+        self.creation.add_brick(
+            'TextBrick',
+            brickName,
+            position=[x, y, z],
+            rotation=[xrot, yrot, zrot],
+            properties={
+                "BrickSize" : [1.0, 1.0, 1.0],
+                "Text" : text
+            }
+        )
+    
     def returnAndIncrementCoordinates(self):
         oldXY = (self.x, self.y)
         self.x += 10
@@ -281,8 +300,12 @@ class LogicExporter:
             if (isinstance(logicBlock.inputB, list)):
                 for blockName in logicBlock.inputB:
                     self.convertLogicBlock(self.logicData[blockName])
-            coordinates = self.returnAndIncrementCoordinates()
-            self.generateMathBrick(logicBlock.name, constants.functionToBRName[logicBlock.function], logicBlock.inputA, logicBlock.inputB, coordinates[0], coordinates[1])
+            if (logicBlock.separate):
+                coordinates = self.returnAndIncrementCoordinates()
+                self.generateMathBrick(logicBlock.name, constants.functionToBRName[logicBlock.function], logicBlock.inputA, logicBlock.inputB, x=coordinates[0], y=coordinates[1], z=0)
+                self.generateTextBrick((logicBlock.name + "TEXT"), logicBlock.name, x=coordinates[0], y=coordinates[1], z=6)
+            else:
+                self.generateMathBrick(logicBlock.name, constants.functionToBRName[logicBlock.function], logicBlock.inputA, logicBlock.inputB, x=0, y=0, z=0)
             self.convertedBlocks.append(logicBlock.name)
 
     def convertLogicDataToCreation(self):
@@ -292,7 +315,7 @@ class LogicExporter:
                 self.convertLogicBlock(block)
         print("Creation Generated")
         self.convertedBlocks = []
-        self.x = 0
+        self.x = 10
         self.y = 0
 
     def exportCreation(self):

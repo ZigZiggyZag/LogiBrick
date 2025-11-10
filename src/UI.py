@@ -255,9 +255,10 @@ class Component(QGraphicsRectItem):
             numInputs = (2 if (self.function in constants.functionsWithTwoInputs) else 1)
 
         heightOffset = 30 if (self.function == "EQN") else 0
+        heightOffset2 = 20 if (self.function == "EQN") else 0
 
         self.width = 100
-        self.height = 55 + heightOffset + (numInputs - 1) * 30
+        self.height = 80 + heightOffset + heightOffset2 + (numInputs - 1) * 30
         super().__init__(0, 0, self.width, self.height)
         self.setPos(x, y)
         self.uniqueName = name
@@ -334,6 +335,36 @@ class Component(QGraphicsRectItem):
             pinYPos = (37 + heightOffset + (i * 30))
             pin = ComponentPin(0, pinYPos, True, self, i)
             self.inputPins.append(pin)
+        
+        # Checkboxes
+
+        if (self.function == "EQN"):
+            checkbox1 = QCheckBox("Sep. Out")
+            checkbox1.setFont(font)
+            checkbox1.stateChanged.connect(self.setEQNOutSeparate)
+            checkbox1.setStyleSheet("background-color: transparent; color: white;")
+
+            proxy = QGraphicsProxyWidget(self)
+            proxy.setWidget(checkbox1)
+            proxy.setPos(10, 25 + heightOffset + (numInputs * 30))
+
+            checkbox2 = QCheckBox("Sep. Var")
+            checkbox2.stateChanged.connect(self.setEQNVarSeparate)
+            checkbox2.setFont(font)
+            checkbox2.setStyleSheet("background-color: transparent; color: white;")
+
+            proxy = QGraphicsProxyWidget(self)
+            proxy.setWidget(checkbox2)
+            proxy.setPos(10, 45 + heightOffset + (numInputs * 30))
+        else:
+            checkbox = QCheckBox("Separate")
+            checkbox.stateChanged.connect(self.setSeparate)
+            checkbox.setFont(font)
+            checkbox.setStyleSheet("background-color: transparent; color: white;")
+
+            proxy = QGraphicsProxyWidget(self)
+            proxy.setWidget(checkbox)
+            proxy.setPos(10, 25 + heightOffset + (numInputs * 30))
 
     def setHighlight(self, highlight):
         match highlight:
@@ -371,7 +402,18 @@ class Component(QGraphicsRectItem):
         inputBox.setReadOnly(False)
         inputBox.setStyleSheet("background-color: white; border: 1px solid black;")
         inputBox.setText("")  # Clear the text when disconnected
+
+    def setSeparate(self, state):
+        print("setSeparate Called")
+        self.logicData.separateLogicBlock(self.uniqueName, (state==2))
     
+    def setEQNOutSeparate(self, state):
+        self.logicData.separateLogicBlock(self.equationBlock.outputBlockName, (state==2))
+    
+    def setEQNVarSeparate(self, state):
+        for variableName in self.equationBlock.variableNames:
+            self.logicData.separateLogicBlock(variableName, (state==2))
+
     def updateLogicBlock(self, index, text=None, remove=False):
         if (self.function == "EQN"):
             if text:
