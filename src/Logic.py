@@ -11,6 +11,7 @@ class LogicBlock:
         self.inputA = None
         self.inputB = None
         self.separate = separate
+        self.label = ""
         self.updateInputs(inputA, inputB)
 
     def __str__(self):
@@ -18,6 +19,10 @@ class LogicBlock:
 
     def setSeparate(self, separate: bool):
         self.separate = separate
+    
+    def setLabel(self, text: str):
+        self.label = text
+        print(f"{self.name} label set to {text}")
 
     def updateInputs(self, inputA=None, inputB=None):
         if inputA != None:
@@ -182,7 +187,7 @@ class LogicData:
         printable_dict = {k: str(v) for k, v in self.logicData.items()}
         pprint.pprint(printable_dict)
     
-    def addLogicBlock(self, function, inputA=1, inputB=1):
+    def addLogicBlock(self, function, inputA=0, inputB=0):
         name = self.generateUniqueName(function)
         logicBlock = LogicBlock(name, function, inputA, inputB)
         self.logicData[name] = logicBlock
@@ -208,6 +213,9 @@ class LogicData:
 
     def separateLogicBlock(self, name, separate: bool=False):
         self.logicData[name].setSeparate(separate)
+    
+    def setLogicLabel(self, name, text: str):
+        self.logicData[name].setLabel(text)
 
     def addEquationBlock(self, equation: str = None):
         equationBlock = EquationBlock(self.generateUniqueName("EQN"), equation)
@@ -303,9 +311,13 @@ class LogicExporter:
                 coordinates = self.returnAndIncrementCoordinates()
                 randomColor = [random.randint(0, 255), random.randint(0, 255), random.randint(0, 255), 255]
                 self.generateMathBrick(creation, logicBlock.name, constants.functionToBRName[logicBlock.function], logicBlock.inputA, logicBlock.inputB, x=coordinates[0], y=coordinates[1], z=0, color=randomColor)
-                self.generateTextBrick(creation, (logicBlock.name + "TEXT"), logicBlock.name, x=coordinates[0], y=coordinates[1], z=6, zrot = -90, color=randomColor)
+                if (logicBlock.label != ""):
+                    self.generateTextBrick(creation, (logicBlock.name + "TEXT"), logicBlock.label, x=coordinates[0], y=coordinates[1], z=6, zrot = -90, color=randomColor)
+                else:
+                    self.generateTextBrick(creation, (logicBlock.name + "TEXT"), logicBlock.name, x=coordinates[0], y=coordinates[1], z=6, zrot = -90, color=randomColor)
             else:
                 self.generateMathBrick(creation, logicBlock.name, constants.functionToBRName[logicBlock.function], logicBlock.inputA, logicBlock.inputB, x=0, y=0, z=0, color=defaultColor)
+                
             self.convertedBlocks.append(logicBlock.name)
 
     def convertLogicDataToCreation(self, name: str="generated"):

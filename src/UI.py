@@ -238,6 +238,62 @@ class customProxyExtension(QGraphicsProxyWidget):
             self.setConnectedComponentHighlight(0)
         super().hoverLeaveEvent(event)
 
+class EditableLabel(QGraphicsTextItem):
+    def __init__(self, text, parent=None):
+        super().__init__(text, parent)
+        self.parent = parent
+        self.setFlag(self.ItemIsFocusable, True)
+        self.setFlag(self.ItemIsSelectable, True)
+
+        self.setAcceptHoverEvents(True)
+
+        self.setTextInteractionFlags(Qt.NoTextInteraction)
+
+        self.originalText = text
+
+    def mouseDoubleClickEvent(self, event):
+        # Enable editing
+        self.setTextInteractionFlags(Qt.TextEditorInteraction)
+        self.setFocus()
+        
+        # Select all text for easy replacement
+        cursor = self.textCursor()
+        cursor.select(cursor.Document)
+        self.setTextCursor(cursor)
+        
+        super().mouseDoubleClickEvent(event)
+    
+    def focusOutEvent(self, event):
+        final_text = self.toPlainText().strip()
+            
+        # Call your custom function here
+        self.setComponentLabel(final_text)
+
+        # Disable editing when focus is lost
+        self.setTextInteractionFlags(Qt.NoTextInteraction)
+        
+        # Deselect text
+        cursor = self.textCursor()
+        cursor.clearSelection()
+        self.setTextCursor(cursor)
+        
+        super().focusOutEvent(event)
+
+    def setComponentLabel(self, text):
+        if text == "":
+            self.parent.setLabel("")
+            self.setPlainText(self.originalText)
+        else:
+            self.parent.setLabel(text)
+
+    
+    def keyPressEvent(self, event):
+        # Allow pressing Enter/Return to finish editing
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter):
+            self.clearFocus()
+        else:
+            super().keyPressEvent(event)
+
 class Component(QGraphicsRectItem):
     def __init__(self, x, y, name, function, logicData: Logic.LogicData):
         self.logicData = logicData
@@ -264,8 +320,10 @@ class Component(QGraphicsRectItem):
         self.uniqueName = name
 
         # Component Label
-        label = QGraphicsTextItem(self.uniqueName, self)
+        # label = QGraphicsTextItem(self.uniqueName, self)
+        label = EditableLabel(self.uniqueName, self)
         label.setDefaultTextColor(Qt.white)
+        label.setFlag(label.ItemStacksBehindParent, False)
         font = QFont()
         font.setPointSize(8)
         font.setBold(True)
@@ -404,8 +462,10 @@ class Component(QGraphicsRectItem):
         inputBox.setText("")  # Clear the text when disconnected
 
     def setSeparate(self, state):
-        print("setSeparate Called")
         self.logicData.separateLogicBlock(self.uniqueName, (state==2))
+    
+    def setLabel(self, text):
+        self.logicData.setLogicLabel(self.uniqueName, text)
     
     def setEQNOutSeparate(self, state):
         self.logicData.separateLogicBlock(self.equationBlock.outputBlockName, (state==2))
