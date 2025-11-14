@@ -281,10 +281,12 @@ class EditableLabel(QGraphicsTextItem):
 
     def setComponentLabel(self, text):
         if text == "":
-            self.parent.setLabel("")
+            if (self.parent.function != "EQN"):
+                self.parent.setLabel("")
             self.setPlainText(self.originalText)
         else:
-            self.parent.setLabel(text)
+            if (self.parent.function != "EQN"):
+                self.parent.setLabel(text)
 
     
     def keyPressEvent(self, event):
@@ -313,7 +315,9 @@ class Component(QGraphicsRectItem):
         heightOffset = 30 if (self.function == "EQN") else 0
         heightOffset2 = 20 if (self.function == "EQN") else 0
 
-        self.width = 100
+        widthOffset = 40 if (self.function == "EQN") else 0
+
+        self.width = 100 + widthOffset
         self.height = 80 + heightOffset + heightOffset2 + (numInputs - 1) * 30
         super().__init__(0, 0, self.width, self.height)
         self.setPos(x, y)
@@ -361,13 +365,15 @@ class Component(QGraphicsRectItem):
         self.inputBoxes = []
         self.inputBoxProxies = []
 
+        inputBoxWidth = (self.width - 45) if (self.function == "EQN") else (self.width - 25)
+
         for i in range(numInputs):
             # if (self.equationBlock):
             #     self.variableToIndex[i] = self.equationBlock.variableNames[i]
 
             inputBox = QLineEdit()
             inputBox.setValidator(QDoubleValidator())
-            inputBox.setMaximumWidth(self.width - 25)
+            inputBox.setMaximumWidth(inputBoxWidth)
             inputBox.setAlignment(Qt.AlignCenter)
             inputBox.setStyleSheet("background-color: white; border: 1px solid black;")
             inputBoxFont = QFont()
@@ -376,9 +382,26 @@ class Component(QGraphicsRectItem):
 
             # Update Logic Data is input set
             inputBox.editingFinished.connect(lambda checked=None, text=inputBox.text(), i=i: self.updateLogicBlock(i))
-            
+
             proxy = customProxyExtension(i, self)
-            proxy.setWidget(inputBox)
+
+            if (self.function == "EQN"):
+                widget = QWidget()
+                layout = QHBoxLayout(widget)
+
+                label = QLabel(f"{self.equationBlock.variableNames[i][len(self.uniqueName):]}=")
+                label.setStyleSheet("background-color: transparent; font-weight: bold")
+                label.setAlignment(Qt.AlignRight)
+                layout.addWidget(label)
+                layout.addWidget(inputBox)
+                layout.setContentsMargins(0, 0, 0, 0)
+
+                widget.setMaximumWidth(self.width - 25)
+                widget.setStyleSheet("background-color: transparent;")
+                proxy.setWidget(widget)
+            else:
+                proxy.setWidget(inputBox)
+
             proxy.setPos(10, 28 + heightOffset + (i * 30))
 
             self.inputBoxes.append(inputBox)
