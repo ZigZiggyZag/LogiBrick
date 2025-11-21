@@ -83,8 +83,8 @@ class EquationBlock:
         splitEquation = inputEquation.split(' ')
         outputEquation = splitEquation[0]
         for i in range(len(splitEquation) - 1):
-            if (((splitEquation[i+1] == '(') and (splitEquation[i] != '(') and (self.isNotFunctionOperator(splitEquation[i]))) or 
-                ((splitEquation[i] == ')') and (splitEquation[i+1] != ')') and (self.isNotFunctionOperator(splitEquation[i+1])))):
+            if (((splitEquation[i+1] == '(') and (splitEquation[i] != '(') and (self.isNotFunctionOperator(splitEquation[i])) and (splitEquation[i] != ",")) or 
+                ((splitEquation[i] == ')') and (splitEquation[i+1] != ')') and (self.isNotFunctionOperator(splitEquation[i+1])) and (splitEquation[i+1] != ","))):
                 outputEquation += " *"
             outputEquation += (" " + splitEquation[i + 1])
         return outputEquation
@@ -92,8 +92,9 @@ class EquationBlock:
     def shuntingYard(self, inputEquation: str):
         outputQueue = []
         operatorStack = []
-
-        modifiedEquation = self.manageImplicitMultipication(inputEquation)
+        
+        removedNewlines = inputEquation.replace("\n", "").replace("\r", "")
+        modifiedEquation = self.manageImplicitMultipication(removedNewlines)
 
         for token in modifiedEquation.split(' '):
             if self.isOperatorNotFunction(token):
@@ -132,6 +133,7 @@ class EquationBlock:
 
             nameIterator = 0
 
+            print(revPolNoEq)
             for token in revPolNoEq:
                 # variables or numbers
                 if (self.isNotFunctionOperator(token)):
